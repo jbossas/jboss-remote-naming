@@ -20,7 +20,7 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package org.jboss.naming.client;
+package org.jboss.naming.remote.client;
 
 import java.util.Collection;
 import java.util.Iterator;

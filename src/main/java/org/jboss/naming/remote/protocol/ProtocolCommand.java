@@ -19,36 +19,24 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package org.jboss.naming.client.protocol.v1;
+package org.jboss.naming.remote.protocol;
 
+import java.io.DataInput;
 import java.io.IOException;
-import org.jboss.naming.client.RemoteNamingService;
-import org.jboss.naming.client.RemoteNamingServer;
+import javax.naming.NamingException;
+import org.jboss.naming.remote.server.RemoteNamingService;
+import org.jboss.naming.remote.client.RemoteNamingStore;
 import org.jboss.remoting3.Channel;
 
 /**
- * The entry point to VersionOne
- *
  * @author John Bailey
  */
-public class VersionOne {
+public interface ProtocolCommand<T> {
+    byte getCommandId();
 
-    private VersionOne() {
-    }
+    T execute(Channel channel, Object... args) throws IOException, NamingException;
 
-    public static byte getVersionIdentifier() {
-        return 0x01;
-    }
+    void handleServerMessage(Channel channel, DataInput input, int correlationId, RemoteNamingService namingServer) throws IOException;
 
-    public static RemoteNamingStoreV1 getRemoteNamingStore(final Channel channel) throws IOException {
-        final RemoteNamingStoreV1 context = new RemoteNamingStoreV1(channel);
-        context.start();
-        return context;
-    }
-
-    public static RemoteNamingServer getNamingServer(final Channel channel, final RemoteNamingService remoteNamingServer) {
-        final RemoteNamingServerV1 server = new RemoteNamingServerV1(channel, remoteNamingServer);
-        server.start();
-        return server;
-    }
+    void handleClientMessage(DataInput input, int correlationId, RemoteNamingStore namingStore) throws IOException;
 }

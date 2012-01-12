@@ -19,7 +19,7 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package org.jboss.naming.client.protocol.v1;
+package org.jboss.naming.remote.protocol.v1;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -40,21 +40,21 @@ import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
 import org.jboss.marshalling.Marshaller;
 import org.jboss.marshalling.Unmarshaller;
-import static org.jboss.naming.client.ClientUtil.namingException;
-import org.jboss.naming.client.RemoteContext;
-import org.jboss.naming.client.RemoteNamingService;
-import org.jboss.naming.client.RemoteNamingStore;
-import org.jboss.naming.client.protocol.ProtocolCommand;
-import static org.jboss.naming.client.protocol.v1.Constants.BINDING;
-import static org.jboss.naming.client.protocol.v1.Constants.CONTEXT;
-import static org.jboss.naming.client.protocol.v1.Constants.NAME;
-import static org.jboss.naming.client.protocol.v1.Constants.OBJECT;
-import static org.jboss.naming.client.protocol.v1.Constants.SUCCESS;
-import static org.jboss.naming.client.protocol.v1.ReadUtil.prepareForUnMarshalling;
-import static org.jboss.naming.client.protocol.v1.WriteUtil.prepareForMarshalling;
-import static org.jboss.naming.client.protocol.v1.WriteUtil.write;
-import static org.jboss.naming.client.protocol.v1.WriteUtil.writeExceptionResponse;
-import static org.jboss.naming.client.protocol.v1.WriteUtil.writeResponse;
+import static org.jboss.naming.remote.client.ClientUtil.namingException;
+import org.jboss.naming.remote.client.RemoteContext;
+import org.jboss.naming.remote.server.RemoteNamingService;
+import org.jboss.naming.remote.client.RemoteNamingStore;
+import org.jboss.naming.remote.protocol.ProtocolCommand;
+import static org.jboss.naming.remote.protocol.v1.Constants.BINDING;
+import static org.jboss.naming.remote.protocol.v1.Constants.CONTEXT;
+import static org.jboss.naming.remote.protocol.v1.Constants.NAME;
+import static org.jboss.naming.remote.protocol.v1.Constants.OBJECT;
+import static org.jboss.naming.remote.protocol.v1.Constants.SUCCESS;
+import static org.jboss.naming.remote.protocol.v1.ReadUtil.prepareForUnMarshalling;
+import static org.jboss.naming.remote.protocol.v1.WriteUtil.prepareForMarshalling;
+import static org.jboss.naming.remote.protocol.v1.WriteUtil.write;
+import static org.jboss.naming.remote.protocol.v1.WriteUtil.writeExceptionResponse;
+import static org.jboss.naming.remote.protocol.v1.WriteUtil.writeResponse;
 import org.jboss.remoting3.Channel;
 import org.xnio.IoFuture;
 

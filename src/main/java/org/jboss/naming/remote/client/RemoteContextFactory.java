@@ -19,7 +19,7 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package org.jboss.naming.client;
+package org.jboss.naming.remote.client;
 
 import java.io.DataInputStream;
 import java.io.IOException;
@@ -28,8 +28,8 @@ import java.util.Hashtable;
 import java.util.concurrent.TimeUnit;
 import javax.naming.Context;
 import org.jboss.logging.Logger;
-import static org.jboss.naming.client.Constants.NAMING;
-import org.jboss.naming.client.protocol.Versions;
+import static org.jboss.naming.remote.Constants.NAMING;
+import org.jboss.naming.remote.protocol.Versions;
 import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.MessageInputStream;
 import org.xnio.AbstractIoFuture;

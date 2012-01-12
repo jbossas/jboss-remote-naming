@@ -19,35 +19,30 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package org.jboss.naming.client.protocol.v1;
+
+package org.jboss.naming.remote.protocol;
+
+import java.io.DataOutputStream;
+import org.jboss.remoting3.MessageOutputStream;
+import org.xnio.Cancellable;
 
 /**
- * The version 1 constants.
+ * A DataOutputStream implementation to wrap a MessageOutputStream to allow it to be cancelled.
  *
- * @author John Bailey
+ * @author <a href="mailto:darran.lofthouse@jboss.com">Darran Lofthouse</a>
  */
-class Constants {
-    /*
-     * Outcomes
-     */
-    static final byte SUCCESS = 0x00;
-    static final byte FAILURE = 0x01;
+public class CancellableDataOutputStream extends DataOutputStream implements Cancellable {
 
-    /*
-    * Parameter Types
-    */
-    static final byte NAME = 0x00;
-    static final byte OBJECT = 0x01;
-    static final byte EXCEPTION = 0x02;
-    static final byte VOID = 0x03;
-    static final byte BINDING = 0x04;
-    static final byte CONTEXT = 0x05;
-    static final byte LIST = 0x06;
+    private final MessageOutputStream mos;
 
-    /*
-     * General
-     */
-    static final String MARSHALLING_STRATEGY = "river";
+    public CancellableDataOutputStream(MessageOutputStream mos) {
+        super(mos);
+        this.mos = mos;
+    }
 
+    @Override
+    public MessageOutputStream cancel() {
+        return mos.cancel();
+    }
 
 }

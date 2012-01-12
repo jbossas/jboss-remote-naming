@@ -1,6 +1,6 @@
 /*
  * JBoss, Home of Professional Open Source.
- * Copyright 2012, Red Hat, Inc., and individual contributors
+ * Copyright 2011, Red Hat, Inc., and individual contributors
  * as indicated by the @author tags. See the copyright.txt file in the
  * distribution for a full listing of individual contributors.
  *
@@ -19,30 +19,36 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
+package org.jboss.naming.remote.protocol.v1;
 
-package org.jboss.naming.client.protocol;
-
-import java.io.DataOutputStream;
-import org.jboss.remoting3.MessageOutputStream;
-import org.xnio.Cancellable;
+import java.io.IOException;
+import org.jboss.naming.remote.server.RemoteNamingServer;
+import org.jboss.naming.remote.server.RemoteNamingService;
+import org.jboss.remoting3.Channel;
 
 /**
- * A DataOutputStream implementation to wrap a MessageOutputStream to allow it to be cancelled.
+ * The entry point to VersionOne
  *
- * @author <a href="mailto:darran.lofthouse@jboss.com">Darran Lofthouse</a>
+ * @author John Bailey
  */
-public class CancellableDataOutputStream extends DataOutputStream implements Cancellable {
+public class VersionOne {
 
-    private final MessageOutputStream mos;
-
-    public CancellableDataOutputStream(MessageOutputStream mos) {
-        super(mos);
-        this.mos = mos;
+    private VersionOne() {
     }
 
-    @Override
-    public MessageOutputStream cancel() {
-        return mos.cancel();
+    public static byte getVersionIdentifier() {
+        return 0x01;
     }
 
+    public static RemoteNamingStoreV1 getRemoteNamingStore(final Channel channel) throws IOException {
+        final RemoteNamingStoreV1 context = new RemoteNamingStoreV1(channel);
+        context.start();
+        return context;
+    }
+
+    public static RemoteNamingServer getNamingServer(final Channel channel, final RemoteNamingService remoteNamingServer) {
+        final RemoteNamingServerV1 server = new RemoteNamingServerV1(channel, remoteNamingServer);
+        server.start();
+        return server;
+    }
 }

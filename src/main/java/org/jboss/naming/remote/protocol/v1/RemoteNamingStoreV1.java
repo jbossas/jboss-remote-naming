@@ -19,7 +19,7 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package org.jboss.naming.client.protocol.v1;
+package org.jboss.naming.remote.protocol.v1;
 
 import java.io.DataInputStream;
 import java.io.DataOutput;
@@ -33,10 +33,10 @@ import javax.naming.Name;
 import javax.naming.NameClassPair;
 import javax.naming.NamingException;
 import org.jboss.logging.Logger;
-import static org.jboss.naming.client.ClientUtil.namingException;
-import org.jboss.naming.client.RemoteNamingStore;
-import org.jboss.naming.client.protocol.ProtocolCommand;
-import static org.jboss.naming.client.protocol.v1.WriteUtil.write;
+import static org.jboss.naming.remote.client.ClientUtil.namingException;
+import org.jboss.naming.remote.client.RemoteNamingStore;
+import org.jboss.naming.remote.protocol.ProtocolCommand;
+import static org.jboss.naming.remote.protocol.v1.WriteUtil.write;
 import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.MessageInputStream;
 import org.xnio.IoUtils;
@@ -62,7 +62,7 @@ public class RemoteNamingStoreV1 implements RemoteNamingStore {
     private void sendVersionHeader() throws IOException {
         write(channel, new WriteUtil.Writer() {
             public void write(DataOutput output) throws IOException {
-                output.write(org.jboss.naming.client.Constants.NAMING);
+                output.write(org.jboss.naming.remote.Constants.NAMING);
                 output.writeByte(VersionOne.getVersionIdentifier());
             }
         });

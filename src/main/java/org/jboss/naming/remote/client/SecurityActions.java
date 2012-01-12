@@ -20,7 +20,7 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package org.jboss.naming.client;
+package org.jboss.naming.remote.client;
 
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -38,51 +38,11 @@ final class SecurityActions {
         }
     };
 
-    static String getSystemProperty(final String key) {
-        if (System.getSecurityManager() == null) {
-            return System.getProperty(key);
-        } else {
-            return AccessController.doPrivileged(new PrivilegedAction<String>() {
-                @Override
-                public String run() {
-                    return System.getProperty(key);
-                }
-            });
-        }
-    }
-
-    static void setSystemProperty(final String key, final String value) {
-        if (System.getSecurityManager() == null) {
-            System.setProperty(key, value);
-        } else {
-            AccessController.doPrivileged(new PrivilegedAction<String>() {
-                @Override
-                public String run() {
-                    System.setProperty(key, value);
-                    return null;
-                }
-            });
-        }
-    }
-
     static ClassLoader getContextClassLoader() {
         if (System.getSecurityManager() == null) {
             return Thread.currentThread().getContextClassLoader();
         } else {
             return AccessController.doPrivileged(GET_CLASS_LOADER);
-        }
-    }
-
-    static <S> ServiceLoader<S> loadService(final Class<S> type, final ClassLoader classLoader) {
-        final SecurityManager sm = System.getSecurityManager();
-        if (sm == null) {
-            return ServiceLoader.load(type, classLoader);
-        } else {
-            return AccessController.doPrivileged(new PrivilegedAction<ServiceLoader<S>>() {
-                public ServiceLoader<S> run() {
-                    return ServiceLoader.load(type, classLoader);
-                }
-            });
         }
     }
 

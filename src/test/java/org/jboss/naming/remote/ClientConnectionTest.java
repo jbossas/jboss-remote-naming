@@ -19,9 +19,11 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package org.jboss.naming.client;
+package org.jboss.naming.remote;
 
-import java.util.Collections;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -33,6 +35,22 @@ import javax.naming.LinkRef;
 import javax.naming.NameClassPair;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
+import javax.security.auth.callback.Callback;
+import javax.security.auth.callback.CallbackHandler;
+import javax.security.auth.callback.NameCallback;
+import javax.security.auth.callback.PasswordCallback;
+import javax.security.auth.callback.UnsupportedCallbackException;
+import javax.security.sasl.AuthorizeCallback;
+import javax.security.sasl.RealmCallback;
+import javax.security.sasl.SaslException;
+import org.jboss.naming.remote.client.RemoteContext;
+import org.jboss.naming.remote.server.RemoteNamingService;
+import org.jboss.remoting3.Endpoint;
+import org.jboss.remoting3.Remoting;
+import org.jboss.remoting3.remote.RemoteConnectionProviderFactory;
+import org.jboss.remoting3.security.ServerAuthenticationProvider;
+import org.jboss.remoting3.spi.NetworkServerProvider;
+import org.jboss.sasl.callback.VerifyPasswordCallback;
 import org.junit.AfterClass;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -41,6 +59,15 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.xnio.OptionMap;
+import static org.xnio.Options.SASL_MECHANISMS;
+import static org.xnio.Options.SASL_POLICY_NOANONYMOUS;
+import static org.xnio.Options.SASL_PROPERTIES;
+import static org.xnio.Options.SSL_ENABLED;
+import org.xnio.Property;
+import org.xnio.Sequence;
+import org.xnio.Xnio;
+import org.xnio.channels.AcceptingChannel;
 
 /**
  * @author John Bailey
@@ -53,11 +80,20 @@ public class ClientConnectionTest {
 
     @BeforeClass
     public static void beforeClass() throws Exception {
-        server = new RemoteNamingService(localContext, "localhost", 7999, null, Collections.<String>emptySet(), Executors.newFixedThreadPool(10));
+        final Xnio xnio = Xnio.getInstance();
+        final Endpoint endpoint = Remoting.createEndpoint("RemoteNaming", xnio, OptionMap.EMPTY);
+        endpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), OptionMap.EMPTY);
+
+        final NetworkServerProvider nsp = endpoint.getConnectionProviderInterface("remote", NetworkServerProvider.class);
+        final SocketAddress bindAddress = new InetSocketAddress("localhost", 7999);
+        final OptionMap serverOptions = createOptionMap();
+
+        final AcceptingChannel channel = nsp.createServer(bindAddress, serverOptions, new DefaultAuthenticationHandler(), null);
+        server = new RemoteNamingService(localContext, Executors.newFixedThreadPool(10), endpoint);
         server.start();
 
         Properties env = new Properties();
-        env.put(Context.INITIAL_CONTEXT_FACTORY, org.jboss.naming.client.InitialContextFactory.class.getName());
+        env.put(Context.INITIAL_CONTEXT_FACTORY, org.jboss.naming.remote.client.InitialContextFactory.class.getName());
         env.put(Context.PROVIDER_URL, "remote://localhost:7999");
         env.put("jboss.naming.client.remote.connectionprovider.create.options.org.xnio.Options.SSL_ENABLED", "false");
         env.put("jboss.naming.client.connect.options.org.xnio.Options.SASL_POLICY_NOANONYMOUS", "false");
@@ -82,7 +118,7 @@ public class ClientConnectionTest {
         try {
             remoteContext.lookup("test");
             fail("Should have thrown NameNotFound");
-        } catch (NameNotFoundException expected){
+        } catch (NameNotFoundException expected) {
         }
     }
 
@@ -187,8 +223,8 @@ public class ClientConnectionTest {
         expected.put("test3", String.class.getName());
         expected.put("test4", String.class.getName());
         expected.put("test5", Context.class.getName());
-        
-        while(entries.hasMore()) {
+
+        while (entries.hasMore()) {
             final NameClassPair pair = entries.next();
             assertTrue("Unexpected pair: " + pair.getName(), expected.containsKey(pair.getName()));
             assertEquals(expected.get(pair.getName()), pair.getClassName());
@@ -196,7 +232,7 @@ public class ClientConnectionTest {
         }
 
         assertTrue(expected.isEmpty());
-        
+
         localContext.unbind("test1");
         localContext.unbind("test2");
         localContext.unbind("test3");
@@ -221,10 +257,10 @@ public class ClientConnectionTest {
         expected.put("test4", "TestValue4");
         expected.put("test5", context);
 
-        while(entries.hasMore()) {
+        while (entries.hasMore()) {
             final Binding binding = entries.next();
             assertTrue("Unexpected pair: " + binding.getName(), expected.containsKey(binding.getName()));
-            if(!binding.getClassName().equals(Context.class.getName())) {
+            if (!binding.getClassName().equals(Context.class.getName())) {
                 assertEquals(expected.get(binding.getName()), binding.getObject());
             }
             expected.remove(binding.getName());
@@ -262,7 +298,7 @@ public class ClientConnectionTest {
         try {
             localContext.lookup("test");
             fail("Should have thrown NameNotFound");
-        } catch( NameNotFoundException e) {
+        } catch (NameNotFoundException e) {
         }
     }
 
@@ -272,7 +308,7 @@ public class ClientConnectionTest {
         try {
             remoteContext.unbind("test");
             fail("Should have thrown NameNotFound");
-        } catch( NameNotFoundException e) {
+        } catch (NameNotFoundException e) {
         }
     }
 
@@ -284,7 +320,7 @@ public class ClientConnectionTest {
         try {
             localContext.lookup("test");
             fail("Should have thrown NameNotFound");
-        } catch( NameNotFoundException e) {
+        } catch (NameNotFoundException e) {
         }
         assertEquals("TestValue1", localContext.lookup("test2"));
         localContext.unbind("test2");
@@ -295,7 +331,7 @@ public class ClientConnectionTest {
         try {
             remoteContext.rename("test", "test2");
             fail("Should have thrown NameNotFound");
-        } catch( NameNotFoundException e) {
+        } catch (NameNotFoundException e) {
         }
     }
 
@@ -314,7 +350,7 @@ public class ClientConnectionTest {
         try {
             remoteContext.lookup("test");
             fail("Should have thrown NameNotFound");
-        } catch( NameNotFoundException e) {
+        } catch (NameNotFoundException e) {
         }
     }
 
@@ -325,5 +361,102 @@ public class ClientConnectionTest {
         assertTrue(remoteContext.lookupLink("link") instanceof LinkRef);
         localContext.unbind("test");
         localContext.unbind("link");
+    }
+
+    public static final String ANONYMOUS = "ANONYMOUS";
+    public static final String DIGEST_MD5 = "DIGEST-MD5";
+    public static final String JBOSS_LOCAL_USER = "JBOSS-LOCAL-USER";
+    public static final String PLAIN = "PLAIN";
+    private static final String DOLLAR_LOCAL = "$local";
+    private static final String REALM = "Naming_Test_Realm";
+
+    private static OptionMap createOptionMap() {
+        OptionMap.Builder builder = OptionMap.builder();
+        builder.set(SSL_ENABLED, false);
+        builder.set(SASL_MECHANISMS, Sequence.<String>of(ANONYMOUS));
+        builder.set(SASL_PROPERTIES, Sequence.<Property>empty());
+        builder.set(SASL_POLICY_NOANONYMOUS, false);
+
+        return builder.getMap();
+    }
+
+    private static class DefaultAuthenticationHandler implements ServerAuthenticationProvider {
+        @Override
+        public CallbackHandler getCallbackHandler(String mechanismName) {
+            if (mechanismName.equals(ANONYMOUS)) {
+                return new CallbackHandler() {
+
+                    @Override
+                    public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
+                        for (Callback current : callbacks) {
+                            throw new UnsupportedCallbackException(current, "ANONYMOUS mechanism so not expecting a callback");
+                        }
+                    }
+                };
+
+            }
+
+            if (mechanismName.equals(DIGEST_MD5) || mechanismName.equals(PLAIN)) {
+                return new CallbackHandler() {
+
+                    @Override
+                    public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
+                        for (Callback current : callbacks) {
+                            if (current instanceof NameCallback) {
+                                NameCallback ncb = (NameCallback) current;
+                                if (ncb.getDefaultName().equals("DigestUser") == false) {
+                                    throw new IOException("Bad User");
+                                }
+                            } else if (current instanceof PasswordCallback) {
+                                PasswordCallback pcb = (PasswordCallback) current;
+                                pcb.setPassword("DigestPassword".toCharArray());
+                            } else if (current instanceof VerifyPasswordCallback) {
+                                VerifyPasswordCallback vpc = (VerifyPasswordCallback) current;
+                                vpc.setVerified("DigestPassword".equals(vpc.getPassword()));
+                            } else if (current instanceof AuthorizeCallback) {
+                                AuthorizeCallback acb = (AuthorizeCallback) current;
+                                acb.setAuthorized(acb.getAuthenticationID().equals(acb.getAuthorizationID()));
+                            } else if (current instanceof RealmCallback) {
+                                RealmCallback rcb = (RealmCallback) current;
+                                if (rcb.getDefaultText().equals(REALM) == false) {
+                                    throw new IOException("Bad realm");
+                                }
+                            } else {
+                                throw new UnsupportedCallbackException(current);
+                            }
+                        }
+
+                    }
+                };
+
+            }
+
+            if (mechanismName.equals(JBOSS_LOCAL_USER)) {
+                return new CallbackHandler() {
+
+                    @Override
+                    public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
+                        for (Callback current : callbacks) {
+                            if (current instanceof NameCallback) {
+                                NameCallback ncb = (NameCallback) current;
+                                if (DOLLAR_LOCAL.equals(ncb.getDefaultName()) == false) {
+                                    throw new SaslException("Only " + DOLLAR_LOCAL + " user is acceptable.");
+                                }
+                            } else if (current instanceof AuthorizeCallback) {
+                                AuthorizeCallback acb = (AuthorizeCallback) current;
+                                acb.setAuthorized(acb.getAuthenticationID().equals(acb.getAuthorizationID()));
+                            } else {
+                                throw new UnsupportedCallbackException(current);
+                            }
+                        }
+
+                    }
+                };
+
+            }
+
+            return null;
+        }
+
     }
 }

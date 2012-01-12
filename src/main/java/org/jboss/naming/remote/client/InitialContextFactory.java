@@ -20,7 +20,7 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package org.jboss.naming.client;
+package org.jboss.naming.remote.client;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -40,7 +40,8 @@ import javax.security.auth.callback.UnsupportedCallbackException;
 import javax.security.sasl.RealmCallback;
 import javax.xml.bind.DatatypeConverter;
 import org.jboss.logging.Logger;
-import static org.jboss.naming.client.ClientUtil.namingException;
+import static org.jboss.naming.remote.client.ClientUtil.namingException;
+import org.jboss.naming.remote.protocol.IoFutureHelper;
 import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.Connection;
 import org.jboss.remoting3.Endpoint;

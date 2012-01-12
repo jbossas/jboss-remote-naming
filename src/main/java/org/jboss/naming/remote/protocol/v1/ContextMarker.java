@@ -1,6 +1,6 @@
 /*
  * JBoss, Home of Professional Open Source.
- * Copyright 2012, Red Hat, Inc., and individual contributors
+ * Copyright 2011, Red Hat, Inc., and individual contributors
  * as indicated by the @author tags. See the copyright.txt file in the
  * distribution for a full listing of individual contributors.
  *
@@ -19,29 +19,13 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
+package org.jboss.naming.remote.protocol.v1;
 
-package org.jboss.naming.client;
-
-import java.util.List;
-import javax.naming.Binding;
-import javax.naming.Context;
-import javax.naming.Name;
-import javax.naming.NameClassPair;
-import javax.naming.NamingException;
+import java.io.Serializable;
 
 /**
  * @author John Bailey
  */
-public interface RemoteNamingStore {
-    Object lookup(Name name) throws NamingException;
-    void bind(final Name name, final Object object) throws NamingException;
-    void rebind(Name name, Object object) throws NamingException;
-    void rename(Name name, Name object) throws NamingException;
-    List<NameClassPair> list(Name name) throws NamingException;
-    List<Binding> listBindings(Name name) throws NamingException;
-    void unbind(Name name) throws NamingException;
-    Context createSubcontext(Name name) throws NamingException;
-    void destroySubcontext(Name name) throws NamingException;
-    Object lookupLink(final Name name) throws NamingException;
-    void close() throws NamingException;
+public class ContextMarker implements Serializable {
+    static final ContextMarker INSTANCE = new ContextMarker();
 }

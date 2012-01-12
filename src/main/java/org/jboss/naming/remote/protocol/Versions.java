@@ -19,13 +19,13 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package org.jboss.naming.client.protocol;
+package org.jboss.naming.remote.protocol;
 
 import java.io.IOException;
-import org.jboss.naming.client.RemoteNamingService;
-import org.jboss.naming.client.RemoteNamingStore;
-import org.jboss.naming.client.RemoteNamingServer;
-import org.jboss.naming.client.protocol.v1.VersionOne;
+import org.jboss.naming.remote.server.RemoteNamingServer;
+import org.jboss.naming.remote.server.RemoteNamingService;
+import org.jboss.naming.remote.client.RemoteNamingStore;
+import org.jboss.naming.remote.protocol.v1.VersionOne;
 import org.jboss.remoting3.Channel;
 
 /**

@@ -19,7 +19,7 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package org.jboss.naming.client;
+package org.jboss.naming.remote;
 
 import java.util.ArrayList;
 import java.util.Hashtable;
@@ -36,7 +36,7 @@ import javax.naming.NameNotFoundException;
 import javax.naming.NameParser;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
-import static org.jboss.naming.client.ClientUtil.namingEnumeration;
+import static org.jboss.naming.remote.client.ClientUtil.namingEnumeration;
 
 /**
  * @author John Bailey

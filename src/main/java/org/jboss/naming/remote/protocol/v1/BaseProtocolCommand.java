@@ -19,19 +19,19 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package org.jboss.naming.client.protocol.v1;
+package org.jboss.naming.remote.protocol.v1;
 
 import java.io.DataInput;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import org.jboss.marshalling.Unmarshaller;
-import org.jboss.naming.client.protocol.ProtocolCommand;
-import static org.jboss.naming.client.protocol.v1.Constants.EXCEPTION;
-import static org.jboss.naming.client.protocol.v1.Constants.FAILURE;
-import static org.jboss.naming.client.protocol.v1.Constants.SUCCESS;
-import static org.jboss.naming.client.protocol.v1.Constants.VOID;
-import static org.jboss.naming.client.protocol.v1.ReadUtil.prepareForUnMarshalling;
+import org.jboss.naming.remote.protocol.ProtocolCommand;
+import static org.jboss.naming.remote.protocol.v1.Constants.EXCEPTION;
+import static org.jboss.naming.remote.protocol.v1.Constants.FAILURE;
+import static org.jboss.naming.remote.protocol.v1.Constants.SUCCESS;
+import static org.jboss.naming.remote.protocol.v1.Constants.VOID;
+import static org.jboss.naming.remote.protocol.v1.ReadUtil.prepareForUnMarshalling;
 
 /**
  * @author John Bailey

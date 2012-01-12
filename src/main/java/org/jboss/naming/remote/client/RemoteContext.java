@@ -20,7 +20,7 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package org.jboss.naming.client;
+package org.jboss.naming.remote.client;
 
 import java.util.Hashtable;
 import javax.naming.Binding;
@@ -31,8 +31,8 @@ import javax.naming.NameClassPair;
 import javax.naming.NameParser;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
-import static org.jboss.naming.client.ClientUtil.isEmpty;
-import static org.jboss.naming.client.ClientUtil.namingEnumeration;
+import static org.jboss.naming.remote.client.ClientUtil.isEmpty;
+import static org.jboss.naming.remote.client.ClientUtil.namingEnumeration;
 
 /**
  * @author John Bailey

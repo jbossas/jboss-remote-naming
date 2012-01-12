@@ -19,7 +19,7 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package org.jboss.naming.client.protocol.v1;
+package org.jboss.naming.remote.protocol.v1;
 
 import java.io.DataOutput;
 import java.io.IOException;
@@ -29,12 +29,12 @@ import org.jboss.marshalling.Marshaller;
 import org.jboss.marshalling.MarshallerFactory;
 import org.jboss.marshalling.Marshalling;
 import org.jboss.marshalling.MarshallingConfiguration;
-import org.jboss.naming.client.protocol.CancellableDataOutputStream;
-import static org.jboss.naming.client.protocol.v1.Constants.EXCEPTION;
-import static org.jboss.naming.client.protocol.v1.Constants.FAILURE;
-import static org.jboss.naming.client.protocol.v1.Constants.MARSHALLING_STRATEGY;
-import static org.jboss.naming.client.protocol.v1.Constants.OBJECT;
-import static org.jboss.naming.client.protocol.v1.Constants.SUCCESS;
+import org.jboss.naming.remote.protocol.CancellableDataOutputStream;
+import static org.jboss.naming.remote.protocol.v1.Constants.EXCEPTION;
+import static org.jboss.naming.remote.protocol.v1.Constants.FAILURE;
+import static org.jboss.naming.remote.protocol.v1.Constants.MARSHALLING_STRATEGY;
+import static org.jboss.naming.remote.protocol.v1.Constants.OBJECT;
+import static org.jboss.naming.remote.protocol.v1.Constants.SUCCESS;
 import org.jboss.remoting3.Channel;
 import org.xnio.IoUtils;
 
