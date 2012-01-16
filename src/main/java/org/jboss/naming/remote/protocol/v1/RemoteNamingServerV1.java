@@ -25,7 +25,9 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import javax.management.RuntimeMBeanException;
 import org.jboss.logging.Logger;
+import static org.jboss.naming.remote.protocol.v1.WriteUtil.writeExceptionResponse;
 import org.jboss.naming.remote.server.RemoteNamingServer;
+import org.jboss.naming.remote.server.RemoteNamingServerLogger;
 import org.jboss.naming.remote.server.RemoteNamingService;
 import org.jboss.naming.remote.protocol.ProtocolCommand;
 import org.jboss.remoting3.Channel;
@@ -39,21 +41,18 @@ public class RemoteNamingServerV1 implements RemoteNamingServer {
     private static final Logger log = Logger.getLogger(RemoteNamingServerV1.class);
 
     private final Channel channel;
-    private final RemoteNamingService server;
+    private final RemoteNamingService remoteNamingService;
+    private final RemoteNamingServerLogger logger;
 
     public RemoteNamingServerV1(final Channel channel, final RemoteNamingService remoteNamingServer) {
         this.channel = channel;
-        this.server = remoteNamingServer;
+        this.remoteNamingService = remoteNamingServer;
+        this.logger = remoteNamingServer.getLogger();
     }
 
     public void start() {
-        //server.connectionOpened(this);
         channel.receiveMessage(new MessageReciever());
     }
-
-    public void stop() {
-    }
-
 
     private class MessageReciever implements Channel.Receiver {
         public void handleMessage(final Channel channel, MessageInputStream message) {
@@ -65,10 +64,10 @@ public class RemoteNamingServerV1 implements RemoteNamingServer {
 
                 final ProtocolCommand command = Protocol.forId(messageId);
                 if (command != null) {
-                    server.getExecutor().execute(new Runnable() {
+                    remoteNamingService.getExecutor().execute(new Runnable() {
                         public void run() {
                             try {
-                                command.handleServerMessage(channel, dis, correlationId, server);
+                                command.handleServerMessage(channel, dis, correlationId, remoteNamingService);
                             } catch (Throwable t) {
                                 if (correlationId != 0x00) {
                                     Exception response;
@@ -78,12 +77,12 @@ public class RemoteNamingServerV1 implements RemoteNamingServer {
                                         response = (Exception) t;
                                     } else {
                                         response = new IOException("Internal server error.");
-                                        log.warn("Unexpected internal error", t);
+                                        logger.unnexpectedError(t);
                                     }
 
                                     sendIOException(response);
                                 } else {
-                                    log.error("null correlationId so error not sent to client", t);
+                                    logger.nullCorrelationId(t);
                                 }
                             } finally {
                                 IoUtils.safeClose(dis);
@@ -92,11 +91,10 @@ public class RemoteNamingServerV1 implements RemoteNamingServer {
 
                         private void sendIOException(final Exception e) {
                             try {
-                                WriteUtil.writeExceptionResponse(channel, e, messageId, correlationId);
-
+                                writeExceptionResponse(channel, e, messageId, correlationId);
                                 log.tracef("[%d] %h - Success Response Sent", correlationId, messageId);
                             } catch (IOException ioe) {
-                                log.error(ioe);
+                                logger.failedToSendExceptionResponse(ioe);
                             }
                         }
 
@@ -106,23 +104,27 @@ public class RemoteNamingServerV1 implements RemoteNamingServer {
                     throw new IOException("Unrecognised Message ID");
                 }
             } catch (IOException e) {
-                log.error(e);
+                logger.unnexpectedError(e);
                 IoUtils.safeClose(dis);
             } finally {
-                // TODO - Propper shut down logic.
                 channel.receiveMessage(this);
             }
         }
 
-        public void handleError(Channel channel, IOException error) {
-            // TODO Auto-generated method stub
-
+        public void handleError(final Channel channel, final IOException error) {
+            logger.closingChannel(channel, error);
+            try {
+                channel.close();
+            } catch (IOException ignore) {
+            }
         }
 
-        public void handleEnd(Channel channel) {
-            // TODO Auto-generated method stub
-
+        public void handleEnd(final Channel channel) {
+            logger.closingChannelOnChannelEnd(channel);
+            try {
+                channel.close();
+            } catch (IOException ignore) {
+            }
         }
-
     }
 }

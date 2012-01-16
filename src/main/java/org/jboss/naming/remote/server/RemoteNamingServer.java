@@ -27,5 +27,4 @@ package org.jboss.naming.remote.server;
  */
 public interface RemoteNamingServer {
     void start();
-    void stop();
 }

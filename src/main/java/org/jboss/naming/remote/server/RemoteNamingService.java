@@ -40,42 +40,45 @@ import org.jboss.remoting3.OpenListener;
 import org.jboss.remoting3.Registration;
 import org.xnio.IoUtils;
 import org.xnio.OptionMap;
-import org.xnio.channels.AcceptingChannel;
-import org.xnio.channels.ConnectedStreamChannel;
 
 /**
  * @author John Bailey
  */
 public class RemoteNamingService {
     private static final Logger log = Logger.getLogger(RemoteNamingService.class);
-
-    private Endpoint endpoint;
+    private final RemoteNamingServerLogger logger;
     private Registration registration;
-    private AcceptingChannel<? extends ConnectedStreamChannel> server;
     private final Context localContext;
 
     private final Executor executor;
 
-    public RemoteNamingService(final Context localContext, final Executor executor, final Endpoint endpoint) {
-        this.localContext = localContext;
-        this.executor = executor;
-        this.endpoint = endpoint;
+    public RemoteNamingService(final Context localContext, final Executor executor) {
+        this(localContext, executor, DefaultRemoteNamingServerLogger.INSTANCE);
     }
 
-    public void start() throws IOException {
+    public RemoteNamingService(final Context localContext, final Executor executor, final RemoteNamingServerLogger logger) {
+        this.localContext = localContext;
+        this.executor = executor;
+        this.logger = logger;
+    }
+
+    public void start(final Endpoint endpoint) throws IOException {
         registration = endpoint.registerService(Constants.CHANNEL_NAME, new ChannelOpenListener(), OptionMap.EMPTY);
     }
 
-    private class ChannelOpenListener implements OpenListener {
+    public void stop() throws IOException {
+        registration.close();
+    }
 
+    private class ChannelOpenListener implements OpenListener {
         public void channelOpened(Channel channel) {
-            log.trace("Channel Opened");
+            log.debugf("Channel Opened - %s", channel);
             channel.addCloseHandler(new ChannelCloseHandler());
             try {
                 writeHeader(channel);
                 channel.receiveMessage(new ClientVersionReceiver());
             } catch (IOException e) {
-                log.error("Unable to send header, closing channel", e);
+                logger.failedToSendHeader(e);
                 IoUtils.safeClose(channel);
             }
         }
@@ -113,37 +116,33 @@ public class RemoteNamingService {
 
                 Versions.getRemoteNamingServer(version, channel, RemoteNamingService.this);
             } catch (IOException e) {
-                log.error("Error determining version selected by client.");
+                logger.failedToDetermineClientVersion(e);
             } finally {
                 IoUtils.safeClose(dis);
             }
         }
 
-        public void handleError(final Channel channel, final IOException e) {
+        public void handleError(final Channel channel, final IOException error) {
+            logger.closingChannel(channel, error);
+            try {
+                channel.close();
+            } catch (IOException ignore) {
+            }
         }
 
-        public void handleEnd(Channel channel) {
+        public void handleEnd(final Channel channel) {
+            logger.closingChannelOnChannelEnd(channel);
+            try {
+                channel.close();
+            } catch (IOException ignore) {
+            }
         }
-
     }
 
     private class ChannelCloseHandler implements CloseHandler<Channel> {
-
-        public void handleClose(Channel channel, IOException e) {
-            log.debug("Server handleClose");
-            // TODO - Perform Clean Up - possibly notification registrations and even connection registrations.
+        public void handleClose(final Channel channel, final IOException e) {
+            log.debugf("Channel %s closed.", channel);
         }
-    }
-
-    public void stop() throws IOException {
-        if (server != null) {
-            server.close();
-        }
-
-        if (endpoint != null) {
-            endpoint.close();
-        }
-
     }
 
     public Context getLocalContext() {
@@ -152,6 +151,10 @@ public class RemoteNamingService {
 
     public Executor getExecutor() {
         return executor;
+    }
+
+    public RemoteNamingServerLogger getLogger() {
+        return logger;
     }
 }
 

@@ -105,14 +105,14 @@ class Protocol {
             }
         }
 
-        public void handleServerMessage(Channel channel, final DataInput input, final int correlationId, final RemoteNamingService server) throws IOException {
+        public void handleServerMessage(Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
 
             final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
             Name name;
             try {
                 byte paramType = unmarshaller.readByte();
                 if (paramType != NAME) {
-                    throw new IOException("Unexpected paramType");
+                    remoteNamingService.getLogger().unexpectedParameterType(NAME, paramType);
                 }
                 name = unmarshaller.readObject(Name.class);
             } catch (ClassNotFoundException cnfe) {
@@ -122,7 +122,7 @@ class Protocol {
             }
 
             try {
-                final Object result = server.getLocalContext().lookup(name);
+                final Object result = remoteNamingService.getLocalContext().lookup(name);
                 write(channel, new WriteUtil.Writer() {
                     public void write(DataOutput output) throws IOException {
                         output.writeByte(getCommandId());
@@ -221,20 +221,20 @@ class Protocol {
             }
         }
 
-        public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService namingServer) throws IOException {
+        public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
             final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
             Name name;
             Object object;
             try {
                 byte paramType = unmarshaller.readByte();
                 if (paramType != NAME) {
-                    throw new IOException("Unexpected paramType");
+                    remoteNamingService.getLogger().unexpectedParameterType(NAME, paramType);
                 }
                 name = unmarshaller.readObject(Name.class);
 
                 paramType = unmarshaller.readByte();
                 if (paramType != OBJECT) {
-                    throw new IOException("Unexpected paramType");
+                    remoteNamingService.getLogger().unexpectedParameterType(OBJECT, paramType);
                 }
                 object = unmarshaller.readObject();
             } catch (ClassNotFoundException cnfe) {
@@ -244,7 +244,7 @@ class Protocol {
             }
 
             try {
-                namingServer.getLocalContext().bind(name, object);
+                remoteNamingService.getLocalContext().bind(name, object);
                 writeResponse(channel, getCommandId(), correlationId);
             } catch (NamingException e) {
                 writeExceptionResponse(channel, e, getCommandId(), correlationId);
@@ -307,20 +307,20 @@ class Protocol {
             }
         }
 
-        public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService namingServer) throws IOException {
+        public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
             final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
             Name name;
             Object object;
             try {
                 byte paramType = unmarshaller.readByte();
                 if (paramType != NAME) {
-                    throw new IOException("Unexpected paramType");
+                    remoteNamingService.getLogger().unexpectedParameterType(NAME, paramType);
                 }
                 name = unmarshaller.readObject(Name.class);
 
                 paramType = unmarshaller.readByte();
                 if (paramType != OBJECT) {
-                    throw new IOException("Unexpected paramType");
+                    remoteNamingService.getLogger().unexpectedParameterType(OBJECT, paramType);
                 }
                 object = unmarshaller.readObject();
             } catch (ClassNotFoundException cnfe) {
@@ -330,7 +330,7 @@ class Protocol {
             }
 
             try {
-                namingServer.getLocalContext().rebind(name, object);
+                remoteNamingService.getLocalContext().rebind(name, object);
                 writeResponse(channel, getCommandId(), correlationId);
             } catch (NamingException e) {
                 writeExceptionResponse(channel, e, getCommandId(), correlationId);
@@ -390,13 +390,13 @@ class Protocol {
             }
         }
 
-        public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService namingServer) throws IOException {
+        public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
             final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
             Name name;
             try {
                 byte paramType = unmarshaller.readByte();
                 if (paramType != NAME) {
-                    throw new IOException("Unexpected paramType");
+                    remoteNamingService.getLogger().unexpectedParameterType(NAME, paramType);
                 }
                 name = unmarshaller.readObject(Name.class);
             } catch (ClassNotFoundException cnfe) {
@@ -406,7 +406,7 @@ class Protocol {
             }
 
             try {
-                final NamingEnumeration<NameClassPair> results = namingServer.getLocalContext().list(name);
+                final NamingEnumeration<NameClassPair> results = remoteNamingService.getLocalContext().list(name);
                 final List<NameClassPair> resultList = new ArrayList<NameClassPair>();
                 while (results.hasMore()) {
                     resultList.add(results.next());
@@ -502,13 +502,13 @@ class Protocol {
             }
         }
 
-        public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService namingServer) throws IOException {
+        public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
             final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
             Name name;
             try {
                 byte paramType = unmarshaller.readByte();
                 if (paramType != NAME) {
-                    throw new IOException("Unexpected paramType");
+                    remoteNamingService.getLogger().unexpectedParameterType(NAME, paramType);
                 }
                 name = unmarshaller.readObject(Name.class);
             } catch (ClassNotFoundException cnfe) {
@@ -518,7 +518,7 @@ class Protocol {
             }
 
             try {
-                final NamingEnumeration<Binding> results = namingServer.getLocalContext().listBindings(name);
+                final NamingEnumeration<Binding> results = remoteNamingService.getLocalContext().listBindings(name);
                 final List<Binding> resultList = new ArrayList<Binding>();
                 while (results.hasMore()) {
                     resultList.add(results.next());
@@ -627,14 +627,13 @@ class Protocol {
             }
         }
 
-        public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService namingServer) throws IOException {
+        public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
             final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
             Name name;
-            Object object;
             try {
                 byte paramType = unmarshaller.readByte();
                 if (paramType != NAME) {
-                    throw new IOException("Unexpected paramType");
+                    remoteNamingService.getLogger().unexpectedParameterType(NAME, paramType);
                 }
                 name = unmarshaller.readObject(Name.class);
             } catch (ClassNotFoundException cnfe) {
@@ -644,7 +643,7 @@ class Protocol {
             }
 
             try {
-                namingServer.getLocalContext().unbind(name);
+                remoteNamingService.getLocalContext().unbind(name);
                 writeResponse(channel, getCommandId(), correlationId);
             } catch (NamingException e) {
                 writeExceptionResponse(channel, e, getCommandId(), correlationId);
@@ -707,20 +706,20 @@ class Protocol {
             }
         }
 
-        public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService namingServer) throws IOException {
+        public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
             final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
             final Name name;
             final Name newName;
             try {
                 byte paramType = unmarshaller.readByte();
                 if (paramType != NAME) {
-                    throw new IOException("Unexpected paramType");
+                    remoteNamingService.getLogger().unexpectedParameterType(NAME, paramType);
                 }
                 name = unmarshaller.readObject(Name.class);
 
                 paramType = unmarshaller.readByte();
                 if (paramType != NAME) {
-                    throw new IOException("Unexpected paramType");
+                    remoteNamingService.getLogger().unexpectedParameterType(OBJECT, paramType);
                 }
                 newName = unmarshaller.readObject(Name.class);
             } catch (ClassNotFoundException cnfe) {
@@ -730,7 +729,7 @@ class Protocol {
             }
 
             try {
-                namingServer.getLocalContext().rename(name, newName);
+                remoteNamingService.getLocalContext().rename(name, newName);
                 writeResponse(channel, getCommandId(), correlationId);
             } catch (NamingException e) {
                 writeExceptionResponse(channel, e, getCommandId(), correlationId);
@@ -790,14 +789,14 @@ class Protocol {
             }
         }
 
-        public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService server) throws IOException {
+        public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
 
             Name name;
             try {
                 final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
                 byte paramType = unmarshaller.readByte();
                 if (paramType != NAME) {
-                    throw new IOException("Unexpected paramType");
+                    remoteNamingService.getLogger().unexpectedParameterType(NAME, paramType);
                 }
                 name = unmarshaller.readObject(Name.class);
                 unmarshaller.finish();
@@ -806,7 +805,7 @@ class Protocol {
             }
 
             try {
-                server.getLocalContext().createSubcontext(name);
+                remoteNamingService.getLocalContext().createSubcontext(name);
                 write(channel, new WriteUtil.Writer() {
                     public void write(DataOutput output) throws IOException {
                         output.writeByte(getCommandId());
@@ -877,14 +876,14 @@ class Protocol {
             }
         }
 
-        public void handleServerMessage(Channel channel, final DataInput input, final int correlationId, final RemoteNamingService server) throws IOException {
+        public void handleServerMessage(Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
 
             Name name;
             try {
                 final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
                 byte paramType = unmarshaller.readByte();
                 if (paramType != NAME) {
-                    throw new IOException("Unexpected paramType");
+                    remoteNamingService.getLogger().unexpectedParameterType(NAME, paramType);
                 }
                 name = unmarshaller.readObject(Name.class);
                 unmarshaller.finish();
@@ -893,7 +892,7 @@ class Protocol {
             }
 
             try {
-                server.getLocalContext().destroySubcontext(name);
+                remoteNamingService.getLocalContext().destroySubcontext(name);
                 writeResponse(channel, getCommandId(), correlationId);
             } catch (NamingException e) {
                 writeExceptionResponse(channel, e, getCommandId(), correlationId);
@@ -952,14 +951,14 @@ class Protocol {
             }
         }
 
-        public void handleServerMessage(Channel channel, final DataInput input, final int correlationId, final RemoteNamingService server) throws IOException {
+        public void handleServerMessage(Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
 
             final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
             Name name;
             try {
                 byte paramType = unmarshaller.readByte();
                 if (paramType != NAME) {
-                    throw new IOException("Unexpected paramType");
+                    remoteNamingService.getLogger().unexpectedParameterType(NAME, paramType);
                 }
                 name = unmarshaller.readObject(Name.class);
             } catch (ClassNotFoundException cnfe) {
@@ -969,7 +968,7 @@ class Protocol {
             }
 
             try {
-                final Object result = server.getLocalContext().lookupLink(name);
+                final Object result = remoteNamingService.getLocalContext().lookupLink(name);
                 write(channel, new WriteUtil.Writer() {
                     public void write(DataOutput output) throws IOException {
                         output.writeByte(getCommandId());
@@ -1030,9 +1029,11 @@ class Protocol {
     }
 
     private static final Map<Byte, ProtocolCommand> commands = new HashMap<Byte, ProtocolCommand>();
+
     static void register(final ProtocolCommand<?> command) {
         commands.put(command.getCommandId(), command);
     }
+
     static {
         register(LOOKUP);
         register(BIND);

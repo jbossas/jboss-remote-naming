@@ -75,7 +75,7 @@ public class RemoteNamingStoreV1 implements RemoteNamingStore {
             throw namingException("Failed to execute lookup for [" + name + "]", e);
         }
     }
-    
+
     public void bind(final Name name, final Object object) throws NamingException {
         try {
             Protocol.BIND.execute(channel, name, object);
@@ -126,7 +126,7 @@ public class RemoteNamingStoreV1 implements RemoteNamingStore {
 
     public Context createSubcontext(final Name name) throws NamingException {
         try {
-           return Protocol.CREATE_SUBCONTEXT.execute(channel, name);
+            return Protocol.CREATE_SUBCONTEXT.execute(channel, name);
         } catch (IOException e) {
             throw namingException("Failed to execute createSubcontext for [" + name + "]", e);
         }
@@ -186,18 +186,24 @@ public class RemoteNamingStoreV1 implements RemoteNamingStore {
                 log.error(e);
                 IoUtils.safeClose(dis);
             } finally {
-                // TODO - Proper shut down logic.
                 channel.receiveMessage(this);
             }
         }
 
-        public void handleError(Channel channel, IOException error) {
-            // TODO Auto-generated method stub
-
+        public void handleError(final Channel channel, final IOException error) {
+            log.errorf(error, "Closing channel %s due to an error", channel);
+            try {
+                channel.close();
+            } catch (IOException ignore) {
+            }
         }
 
-        public void handleEnd(Channel channel) {
-            // TODO Auto-generated method stub
+        public void handleEnd(final Channel channel) {
+            log.errorf("Channel end notification received, closing channel %s", channel);
+            try {
+                channel.close();
+            } catch (IOException ignore) {
+            }
         }
 
     }

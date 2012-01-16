@@ -44,6 +44,7 @@ import javax.security.sasl.AuthorizeCallback;
 import javax.security.sasl.RealmCallback;
 import javax.security.sasl.SaslException;
 import org.jboss.naming.remote.client.RemoteContext;
+import org.jboss.naming.remote.server.DefaultRemoteNamingServerLogger;
 import org.jboss.naming.remote.server.RemoteNamingService;
 import org.jboss.remoting3.Endpoint;
 import org.jboss.remoting3.Remoting;
@@ -89,8 +90,8 @@ public class ClientConnectionTest {
         final OptionMap serverOptions = createOptionMap();
 
         final AcceptingChannel channel = nsp.createServer(bindAddress, serverOptions, new DefaultAuthenticationHandler(), null);
-        server = new RemoteNamingService(localContext, Executors.newFixedThreadPool(10), endpoint);
-        server.start();
+        server = new RemoteNamingService(localContext, Executors.newFixedThreadPool(10));
+        server.start(endpoint);
 
         Properties env = new Properties();
         env.put(Context.INITIAL_CONTEXT_FACTORY, org.jboss.naming.remote.client.InitialContextFactory.class.getName());
