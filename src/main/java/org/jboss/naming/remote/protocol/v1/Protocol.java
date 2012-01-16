@@ -24,7 +24,6 @@ package org.jboss.naming.remote.protocol.v1;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Hashtable;
@@ -131,7 +130,7 @@ class Protocol {
                         if (result instanceof Context) {
                             output.writeByte(CONTEXT);
                         } else {
-                            output.writeByte(BINDING);
+                            output.writeByte(OBJECT);
                             final Marshaller marshaller = prepareForMarshalling(output);
                             marshaller.writeObject(result);
                             marshaller.finish();
@@ -148,7 +147,7 @@ class Protocol {
                 public void read(final DataInput input, ProtocolIoFuture<Object> future) throws IOException {
                     byte parameterType = input.readByte();
                     switch (parameterType) {
-                        case BINDING: {
+                        case OBJECT: {
                             try {
                                 final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
                                 future.setResult(unmarshaller.readObject());
@@ -531,12 +530,13 @@ class Protocol {
 
                         output.writeByte(Constants.LIST);
                         output.writeInt(resultList.size());
-
                         final Marshaller marshaller = prepareForMarshalling(output);
                         for (Binding binding : resultList) {
-                            if (binding.getObject() instanceof Context && !(binding.getObject() instanceof Serializable)) {
-                                marshaller.writeObject(new Binding(binding.getName(), binding.getClassName(), ContextMarker.INSTANCE));
+                            if (binding.getObject() instanceof Context) {
+                                marshaller.writeByte(Constants.CONTEXT);
+                                marshaller.writeUTF(binding.getName());
                             } else {
+                                marshaller.writeByte(Constants.BINDING);
                                 marshaller.writeObject(binding);
                             }
                         }
@@ -559,21 +559,34 @@ class Protocol {
                     final List<NameClassPair> results = new ArrayList<NameClassPair>(listSize);
                     final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
                     for (int i = 0; i < listSize; i++) {
-                        try {
-                            final Binding binding = unmarshaller.readObject(Binding.class);
-                            if (binding.getClassName().equals(Context.class.getName()) && binding.getObject() instanceof ContextMarker) {
-                                final Name contextName = Name.class.cast(NamedIoFuture.class.cast(future).name.clone()).add(binding.getName());
-                                final Context context = new RemoteContext(contextName, namingStore, new Hashtable<String, Object>());
-                                results.add(new Binding(binding.getName(), binding.getClassName(), context));
-                            } else {
-                                results.add(binding);
+                        parameterType = unmarshaller.readByte();
+                        switch (parameterType) {
+                            case BINDING: {
+                                try {
+                                    final Binding binding = unmarshaller.readObject(Binding.class);
+                                    results.add(binding);
+                                } catch (ClassNotFoundException e) {
+                                    throw new IOException(e);
+                                } catch (ClassCastException e) {
+                                    throw new IOException(e);
+                                }
+                                break;
                             }
-                        } catch (ClassNotFoundException e) {
-                            throw new IOException(e);
-                        } catch (ClassCastException e) {
-                            throw new IOException(e);
-                        } catch (InvalidNameException e) {
-                            throw new IOException(e);
+                            case CONTEXT: {
+                                final String bindingName = unmarshaller.readUTF();
+                                final Name contextName;
+                                try {
+                                    contextName = Name.class.cast(NamedIoFuture.class.cast(future).name.clone()).add(bindingName);
+                                } catch (InvalidNameException e) {
+                                    throw new IOException(e);
+                                }
+                                final Context context = new RemoteContext(contextName, namingStore, new Hashtable<String, Object>());
+                                results.add(new Binding(bindingName, Context.class.getName(), context));
+                                break;
+                            }
+                            default: {
+                                throw new IOException("Unexpected response parameter received.");
+                            }
                         }
                     }
                     unmarshaller.finish();
