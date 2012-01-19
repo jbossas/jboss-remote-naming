@@ -58,6 +58,9 @@ import org.xnio.Options;
 public class InitialContextFactory implements javax.naming.spi.InitialContextFactory {
     private static final Logger logger = Logger.getLogger(InitialContextFactory.class);
 
+    public static final String ENDPOINT = "jboss.naming.client.endpoint";
+    public static final String CONNECTION = "jboss.naming.client.connection";
+
     private static final String CLIENT_PROPS_FILE_NAME = "jboss-naming-client.properties";
 
     private static final long DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS = 5000;
@@ -68,26 +71,18 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
     private static final String CONNECT_OPTIONS_PREFIX = "jboss.naming.client.connect.options.";
     private static final String REMOTE_CONNECTION_PROVIDER_CREATE_OPTIONS_PREFIX = "jboss.naming.client.remote.connectionprovider.create.options.";
 
-    private static final String CALLBACK_HANDLER_KEY = "jboss.naming.client.security.callback.handler.class";
-    private static final String PASSWORD_BASE64_KEY = "jboss.naming.client.security.password.base64";
-    private static final String REALM_KEY = "jboss.naming.client.security.realm";
+    public static final String CALLBACK_HANDLER_KEY = "jboss.naming.client.security.callback.handler.class";
+    public static final String PASSWORD_BASE64_KEY = "jboss.naming.client.security.password.base64";
+    public static final String REALM_KEY = "jboss.naming.client.security.realm";
 
-    // The default options that will be used (unless overridden by the config file) for endpoint creation
     private static final OptionMap DEFAULT_ENDPOINT_CREATION_OPTIONS = OptionMap.create(Options.THREAD_DAEMON, true);
-
-    // The default options that will be used (unless overridden by the config file) while creating a connection
-    private static final OptionMap DEFAULT_CONNECTION_CREATION_OPTIONS = OptionMap.EMPTY;
-
-    // The default options that will be used (unless overridden by the config file) while adding a remote connection
-    // provider to the endpoint
-    private static final OptionMap DEFAULT_CONNECTION_PROVIDER_CREATION_OPTIONS = OptionMap.EMPTY;
+    private static final OptionMap DEFAULT_CONNECTION_CREATION_OPTIONS = OptionMap.create(Options.SASL_POLICY_NOANONYMOUS, false);
+    private static final OptionMap DEFAULT_CONNECTION_PROVIDER_CREATION_OPTIONS = OptionMap.create(Options.SSL_ENABLED, false);
 
     @SuppressWarnings("unchecked")
     public Context getInitialContext(final Hashtable<?, ?> env) throws NamingException {
-        final Properties clientProperties = findAndCreateClientProperties(env);
         try {
-            final Connection connection = createConnection(clientProperties);
-            // Now open the channel
+            final Connection connection = getOrCreateConnection((Hashtable<String, Object>) env, findAndCreateClientProperties(env));
             final IoFuture<Channel> futureChannel = connection.openChannel("naming", OptionMap.EMPTY);
             final Channel channel = IoFutureHelper.get(futureChannel, DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS, TimeUnit.MILLISECONDS);
             return RemoteContextFactory.createVersionedContext(channel, (Hashtable<String, Object>) env);
@@ -98,36 +93,22 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         }
     }
 
-    private Endpoint createEndpoint(final Properties clientProperties) throws IOException {
-        String clientEndpointName = clientProperties.getProperty(CLIENT_PROP_KEY_ENDPOINT_NAME);
-        if(clientEndpointName == null) {
-            clientEndpointName = "config-based-naming-client-endpoint";
+    private Connection getOrCreateConnection(final Hashtable<String, Object> env, final Properties clientProperties) throws IOException, NamingException, URISyntaxException {
+        final Connection connection;
+        if (env.containsKey(CONNECTION)) {
+            connection = (Connection) env.get(CONNECTION);
+        } else {
+            connection = createConnection(getOrCreateEndpoint(env, clientProperties), clientProperties);
         }
-        final OptionMap endPointCreationOptionsFromConfiguration = this.getOptionMapFromProperties(clientProperties, ENDPOINT_CREATION_OPTIONS_PREFIX);
-        // merge with defaults
-        final OptionMap endPointCreationOptions = this.mergeWithDefaults(DEFAULT_ENDPOINT_CREATION_OPTIONS, endPointCreationOptionsFromConfiguration);
-        // create the endpoint
-        final Endpoint clientEndpoint = Remoting.createEndpoint(clientEndpointName, endPointCreationOptions);
-        // add a connection provider for the "remote" URI scheme
-        final OptionMap remoteConnectionProivderOptionsFromConfiguration = this.getOptionMapFromProperties(clientProperties, REMOTE_CONNECTION_PROVIDER_CREATE_OPTIONS_PREFIX);
-        // merge with defaults
-        final OptionMap remoteConnectionProivderOptions = this.mergeWithDefaults(DEFAULT_CONNECTION_PROVIDER_CREATION_OPTIONS, remoteConnectionProivderOptionsFromConfiguration);
-        clientEndpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), remoteConnectionProivderOptions);
-        return clientEndpoint;
+        return connection;
     }
 
-    private Connection createConnection(final Properties clientProperties) throws IOException, URISyntaxException, NamingException {
-        final String connectionUrl = clientProperties.getProperty(Context.PROVIDER_URL);
-        if (connectionUrl == null || connectionUrl.trim().isEmpty()) {
-            throw new NamingException("No provider URL configured for connection");
-        }
+    private Connection createConnection(final Endpoint clientEndpoint, final Properties clientProperties) throws IOException, URISyntaxException, NamingException {
         // get connect options for the connection
-
         final OptionMap connectOptionsFromConfiguration = this.getOptionMapFromProperties(clientProperties, CONNECT_OPTIONS_PREFIX);
         // merge with defaults
         final OptionMap connectOptions = this.mergeWithDefaults(DEFAULT_CONNECTION_CREATION_OPTIONS, connectOptionsFromConfiguration);
-        // create the connection, but first create the endpoint
-        final Endpoint clientEndpoint = createEndpoint(clientProperties);
+
         long connectionTimeout = DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS;
         final String connectionTimeoutValue = clientProperties.getProperty(CLIENT_PROP_KEY_CONNECT_TIMEOUT);
         // if a connection timeout is specified, use it
@@ -139,38 +120,58 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             }
         }
         final CallbackHandler callbackHandler = createCallbackHandler(clientProperties);
-
+        final String connectionUrl = clientProperties.getProperty(Context.PROVIDER_URL);
+        if (connectionUrl == null || connectionUrl.trim().isEmpty()) {
+            throw new NamingException("No provider URL configured for connection");
+        }
         final URI connectionURI = new URI(connectionUrl);
-        // TODO: FIXME: The AnonymousCallbackHandler being passed here is a hack, till we have
-        // a better way of configuring security via EJB client configuration file
         final IoFuture<Connection> futureConnection = clientEndpoint.connect(connectionURI, connectOptions, callbackHandler);
-        // wait for the connection to be established
         return IoFutureHelper.get(futureConnection, connectionTimeout, TimeUnit.MILLISECONDS);
     }
 
-    /**
-     * Creates a callback handler for the given remote connection.
-     *
-     * @param clientProperties The connection properties  @return The CallbackHandler.
-     */
-    private CallbackHandler createCallbackHandler(final Properties clientProperties) throws NamingException {
-        String callbackClass = clientProperties.getProperty(CALLBACK_HANDLER_KEY);
-        String userName = clientProperties.getProperty(Context.SECURITY_PRINCIPAL);
-        String password = clientProperties.getProperty(Context.SECURITY_CREDENTIALS);
-        String passwordBase64 = clientProperties.getProperty(PASSWORD_BASE64_KEY);
-        String realm = clientProperties.getProperty(REALM_KEY);
+    private Endpoint getOrCreateEndpoint(final Hashtable<String, Object> env, final Properties clientProperties) throws IOException {
+        final Endpoint clientEndpoint;
+        if (env.containsKey(ENDPOINT)) {
+            clientEndpoint = (Endpoint) env.get(ENDPOINT);
+        } else {
+            clientEndpoint = createEndpoint(clientProperties);
+        }
+        return clientEndpoint;
+    }
 
-        CallbackHandler handler = resolveCallbackHandler(callbackClass, userName, password, passwordBase64, realm);
+    private Endpoint createEndpoint(final Properties clientProperties) throws IOException {
+        String clientEndpointName = clientProperties.getProperty(CLIENT_PROP_KEY_ENDPOINT_NAME);
+        if (clientEndpointName == null) {
+            clientEndpointName = "config-based-naming-client-endpoint";
+        }
+        final OptionMap endPointCreationOptionsFromConfiguration = this.getOptionMapFromProperties(clientProperties, ENDPOINT_CREATION_OPTIONS_PREFIX);
+        // merge with defaults
+        final OptionMap endPointCreationOptions = this.mergeWithDefaults(DEFAULT_ENDPOINT_CREATION_OPTIONS, endPointCreationOptionsFromConfiguration);
+        // create the endpoint
+        final Endpoint clientEndpoint = Remoting.createEndpoint(clientEndpointName, endPointCreationOptions);
+
+        final OptionMap remoteConnectionProivderOptionsFromConfiguration = this.getOptionMapFromProperties(clientProperties, REMOTE_CONNECTION_PROVIDER_CREATE_OPTIONS_PREFIX);
+        final OptionMap remoteConnectionProivderOptions = this.mergeWithDefaults(DEFAULT_CONNECTION_PROVIDER_CREATION_OPTIONS, remoteConnectionProivderOptionsFromConfiguration);
+        clientEndpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), remoteConnectionProivderOptions);
+        return clientEndpoint;
+    }
+
+    private CallbackHandler createCallbackHandler(final Properties clientProperties) throws NamingException {
+        final String callbackClass = clientProperties.getProperty(CALLBACK_HANDLER_KEY);
+        final String userName = clientProperties.getProperty(Context.SECURITY_PRINCIPAL);
+        final String password = clientProperties.getProperty(Context.SECURITY_CREDENTIALS);
+        final String passwordBase64 = clientProperties.getProperty(PASSWORD_BASE64_KEY);
+        final String realm = clientProperties.getProperty(REALM_KEY);
+
+        final CallbackHandler handler = resolveCallbackHandler(callbackClass, userName, password, passwordBase64, realm);
         if (handler != null) {
             return handler;
         }
-
         //no auth specified, just use the default
         return new AnonymousCallbackHandler();
     }
 
     private CallbackHandler resolveCallbackHandler(final String callbackClass, final String userName, final String password, final String passwordBase64, final String realm) throws NamingException {
-
         if (callbackClass != null && (userName != null || password != null)) {
             throw new RuntimeException("Cannot specify both a callback handler and a username/password for connection.");
         }
@@ -214,18 +215,6 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         return optionMap;
     }
 
-    /**
-     * Merges the passed <code>defaults</code> and the <code>overrides</code> to return a combined
-     * {@link OptionMap}. If the passed <code>overrides</code> has a {@link org.xnio.Option} for
-     * which matches the one in <code>defaults</code> then the default option value is ignored and instead the
-     * overridden one is added to the combined {@link OptionMap}. If however, the <code>overrides</code> doesn't
-     * contain a option which is present in the <code>defaults</code>, then the default option is added to the
-     * combined {@link OptionMap}
-     *
-     * @param defaults  The default options
-     * @param overrides The overridden options
-     * @return
-     */
     private OptionMap mergeWithDefaults(final OptionMap defaults, final OptionMap overrides) {
         // copy all the overrides
         final OptionMap.Builder combinedOptionsBuilder = OptionMap.builder().addAll(overrides);
@@ -245,12 +234,6 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         return combinedOptions;
     }
 
-    /**
-     * If {@link Thread#getContextClassLoader()} is null then returns the classloader which loaded
-     * {@link InitialContextFactory}. Else returns the {@link Thread#getContextClassLoader()}
-     *
-     * @return
-     */
     private static ClassLoader getClientClassLoader() {
         final ClassLoader tccl = SecurityActions.getContextClassLoader();
         if (tccl != null) {
@@ -262,13 +245,13 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
     private Properties findAndCreateClientProperties(final Hashtable<?, ?> env) {
         // First load the props file if it exists
         Properties props = findClientProperties();
-        if(props == null) {
+        if (props == null) {
             props = new Properties();
         }
         // Now override with naming env entries
-        for(Map.Entry<?, ?> entry : env.entrySet()) {
-            if(entry.getKey() instanceof String && entry.getValue() instanceof String) {
-                props.setProperty((String)entry.getKey(), (String)entry.getValue());
+        for (Map.Entry<?, ?> entry : env.entrySet()) {
+            if (entry.getKey() instanceof String && entry.getValue() instanceof String) {
+                props.setProperty((String) entry.getKey(), (String) entry.getValue());
             }
         }
         return props;
@@ -293,8 +276,6 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         return null;
     }
 
-    // TODO: This is a hack for now, till we have a way to configure callback handlers
-    // or other mechanism via the EJB client configuration file for connection creation
     private class AnonymousCallbackHandler implements CallbackHandler {
         public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
             for (Callback current : callbacks) {
@@ -309,7 +290,6 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
     }
 
     private class AuthenticationCallbackHandler implements CallbackHandler {
-
         private final String realm;
         private final String username;
         private final char[] password;
@@ -342,5 +322,4 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             }
         }
     }
-
 }

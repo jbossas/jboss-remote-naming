@@ -24,10 +24,12 @@ package org.jboss.naming.remote;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import javax.naming.Binding;
 import javax.naming.Context;
 import javax.naming.InitialContext;
@@ -38,20 +40,17 @@ import javax.naming.NamingEnumeration;
 import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.CallbackHandler;
 import javax.security.auth.callback.NameCallback;
-import javax.security.auth.callback.PasswordCallback;
 import javax.security.auth.callback.UnsupportedCallbackException;
-import javax.security.sasl.AuthorizeCallback;
-import javax.security.sasl.RealmCallback;
-import javax.security.sasl.SaslException;
+import org.jboss.naming.remote.client.InitialContextFactory;
 import org.jboss.naming.remote.client.RemoteContext;
-import org.jboss.naming.remote.server.DefaultRemoteNamingServerLogger;
+import org.jboss.naming.remote.protocol.IoFutureHelper;
 import org.jboss.naming.remote.server.RemoteNamingService;
+import org.jboss.remoting3.Connection;
 import org.jboss.remoting3.Endpoint;
 import org.jboss.remoting3.Remoting;
 import org.jboss.remoting3.remote.RemoteConnectionProviderFactory;
 import org.jboss.remoting3.security.ServerAuthenticationProvider;
 import org.jboss.remoting3.spi.NetworkServerProvider;
-import org.jboss.sasl.callback.VerifyPasswordCallback;
 import org.junit.AfterClass;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -60,7 +59,9 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.xnio.IoFuture;
 import org.xnio.OptionMap;
+import org.xnio.Options;
 import static org.xnio.Options.SASL_MECHANISMS;
 import static org.xnio.Options.SASL_POLICY_NOANONYMOUS;
 import static org.xnio.Options.SASL_PROPERTIES;
@@ -89,15 +90,13 @@ public class ClientConnectionTest {
         final SocketAddress bindAddress = new InetSocketAddress("localhost", 7999);
         final OptionMap serverOptions = createOptionMap();
 
-        final AcceptingChannel channel = nsp.createServer(bindAddress, serverOptions, new DefaultAuthenticationHandler(), null);
+        nsp.createServer(bindAddress, serverOptions, new DefaultAuthenticationHandler(), null);
         server = new RemoteNamingService(localContext, Executors.newFixedThreadPool(10));
         server.start(endpoint);
 
         Properties env = new Properties();
         env.put(Context.INITIAL_CONTEXT_FACTORY, org.jboss.naming.remote.client.InitialContextFactory.class.getName());
         env.put(Context.PROVIDER_URL, "remote://localhost:7999");
-        env.put("jboss.naming.client.remote.connectionprovider.create.options.org.xnio.Options.SSL_ENABLED", "false");
-        env.put("jboss.naming.client.connect.options.org.xnio.Options.SASL_POLICY_NOANONYMOUS", "false");
         remoteContext = new InitialContext(env);
     }
 
@@ -364,6 +363,46 @@ public class ClientConnectionTest {
         localContext.unbind("link");
     }
 
+    @Test
+    public void testWithExistingEndpoint() throws Exception {
+        final Xnio xnio = Xnio.getInstance();
+        final Endpoint endpoint = Remoting.createEndpoint("RemoteNaming", xnio, OptionMap.EMPTY);
+        endpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), OptionMap.create(SSL_ENABLED, false));
+
+        final Properties env = new Properties();
+        env.put(Context.INITIAL_CONTEXT_FACTORY, org.jboss.naming.remote.client.InitialContextFactory.class.getName());
+        env.put(Context.PROVIDER_URL, "remote://localhost:7999");
+        env.put(InitialContextFactory.ENDPOINT, endpoint);
+        final Context context = new InitialContext(env);
+
+        localContext.bind("test", "TestValue");
+        assertEquals("TestValue", context.lookup("test"));
+        localContext.unbind("test");
+
+        endpoint.close();
+    }
+
+    @Test
+    public void testWithExistingConnection() throws Exception {
+        final Xnio xnio = Xnio.getInstance();
+        final Endpoint endpoint = Remoting.createEndpoint("RemoteNaming", xnio, OptionMap.EMPTY);
+        endpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), OptionMap.create(SSL_ENABLED, false));
+
+        final IoFuture<Connection> futureConnection = endpoint.connect(new URI("remote://localhost:7999"), OptionMap.create(Options.SASL_POLICY_NOANONYMOUS, false), new AnonymousCallbackHandler());
+        final Connection connection = IoFutureHelper.get(futureConnection, 1000, TimeUnit.MILLISECONDS);
+
+        final Properties env = new Properties();
+        env.put(Context.INITIAL_CONTEXT_FACTORY, org.jboss.naming.remote.client.InitialContextFactory.class.getName());
+        env.put(InitialContextFactory.CONNECTION, connection);
+        final Context context = new InitialContext(env);
+
+        localContext.bind("test", "TestValue");
+        assertEquals("TestValue", context.lookup("test"));
+        localContext.unbind("test");
+
+        endpoint.close();
+    }
+
     public static final String ANONYMOUS = "ANONYMOUS";
     public static final String DIGEST_MD5 = "DIGEST-MD5";
     public static final String JBOSS_LOCAL_USER = "JBOSS-LOCAL-USER";
@@ -386,78 +425,27 @@ public class ClientConnectionTest {
         public CallbackHandler getCallbackHandler(String mechanismName) {
             if (mechanismName.equals(ANONYMOUS)) {
                 return new CallbackHandler() {
-
-                    @Override
                     public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
                         for (Callback current : callbacks) {
                             throw new UnsupportedCallbackException(current, "ANONYMOUS mechanism so not expecting a callback");
                         }
                     }
                 };
-
             }
-
-            if (mechanismName.equals(DIGEST_MD5) || mechanismName.equals(PLAIN)) {
-                return new CallbackHandler() {
-
-                    @Override
-                    public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
-                        for (Callback current : callbacks) {
-                            if (current instanceof NameCallback) {
-                                NameCallback ncb = (NameCallback) current;
-                                if (ncb.getDefaultName().equals("DigestUser") == false) {
-                                    throw new IOException("Bad User");
-                                }
-                            } else if (current instanceof PasswordCallback) {
-                                PasswordCallback pcb = (PasswordCallback) current;
-                                pcb.setPassword("DigestPassword".toCharArray());
-                            } else if (current instanceof VerifyPasswordCallback) {
-                                VerifyPasswordCallback vpc = (VerifyPasswordCallback) current;
-                                vpc.setVerified("DigestPassword".equals(vpc.getPassword()));
-                            } else if (current instanceof AuthorizeCallback) {
-                                AuthorizeCallback acb = (AuthorizeCallback) current;
-                                acb.setAuthorized(acb.getAuthenticationID().equals(acb.getAuthorizationID()));
-                            } else if (current instanceof RealmCallback) {
-                                RealmCallback rcb = (RealmCallback) current;
-                                if (rcb.getDefaultText().equals(REALM) == false) {
-                                    throw new IOException("Bad realm");
-                                }
-                            } else {
-                                throw new UnsupportedCallbackException(current);
-                            }
-                        }
-
-                    }
-                };
-
-            }
-
-            if (mechanismName.equals(JBOSS_LOCAL_USER)) {
-                return new CallbackHandler() {
-
-                    @Override
-                    public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
-                        for (Callback current : callbacks) {
-                            if (current instanceof NameCallback) {
-                                NameCallback ncb = (NameCallback) current;
-                                if (DOLLAR_LOCAL.equals(ncb.getDefaultName()) == false) {
-                                    throw new SaslException("Only " + DOLLAR_LOCAL + " user is acceptable.");
-                                }
-                            } else if (current instanceof AuthorizeCallback) {
-                                AuthorizeCallback acb = (AuthorizeCallback) current;
-                                acb.setAuthorized(acb.getAuthenticationID().equals(acb.getAuthorizationID()));
-                            } else {
-                                throw new UnsupportedCallbackException(current);
-                            }
-                        }
-
-                    }
-                };
-
-            }
-
             return null;
         }
+    }
 
+    private class AnonymousCallbackHandler implements CallbackHandler {
+        public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
+            for (Callback current : callbacks) {
+                if (current instanceof NameCallback) {
+                    NameCallback ncb = (NameCallback) current;
+                    ncb.setName(ANONYMOUS);
+                } else {
+                    throw new UnsupportedCallbackException(current);
+                }
+            }
+        }
     }
 }
