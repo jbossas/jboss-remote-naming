@@ -22,6 +22,7 @@
 package org.jboss.naming.remote;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.URI;
@@ -41,8 +42,12 @@ import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.CallbackHandler;
 import javax.security.auth.callback.NameCallback;
 import javax.security.auth.callback.UnsupportedCallbackException;
+import org.jboss.ejb.client.ContextSelector;
+import org.jboss.ejb.client.EJBClient;
+import org.jboss.ejb.client.EJBClientContext;
 import org.jboss.naming.remote.client.InitialContextFactory;
 import org.jboss.naming.remote.client.RemoteContext;
+import org.jboss.naming.remote.client.ejb.EjbClientContextSelector;
 import org.jboss.naming.remote.protocol.IoFutureHelper;
 import org.jboss.naming.remote.server.RemoteNamingService;
 import org.jboss.remoting3.Connection;
@@ -69,7 +74,6 @@ import static org.xnio.Options.SSL_ENABLED;
 import org.xnio.Property;
 import org.xnio.Sequence;
 import org.xnio.Xnio;
-import org.xnio.channels.AcceptingChannel;
 
 /**
  * @author John Bailey
@@ -403,6 +407,32 @@ public class ClientConnectionTest {
         endpoint.close();
     }
 
+    @Test
+    public void testSetupEjb() throws Exception {
+        final Xnio xnio = Xnio.getInstance();
+        final Endpoint endpoint = Remoting.createEndpoint("RemoteNaming", xnio, OptionMap.EMPTY);
+        endpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), OptionMap.create(SSL_ENABLED, false));
+
+        final IoFuture<Connection> futureConnection = endpoint.connect(new URI("remote://localhost:7999"), OptionMap.create(Options.SASL_POLICY_NOANONYMOUS, false), new AnonymousCallbackHandler());
+        final Connection connection = IoFutureHelper.get(futureConnection, 1000, TimeUnit.MILLISECONDS);
+
+        final ContextSelector<EJBClientContext> temp = new MockSelector();
+
+        final ContextSelector<EJBClientContext> original = EJBClientContext.setSelector(temp);
+
+        final Properties env = new Properties();
+        env.put(Context.INITIAL_CONTEXT_FACTORY, org.jboss.naming.remote.client.InitialContextFactory.class.getName());
+        env.put(InitialContextFactory.CONNECTION, connection);
+        env.put(InitialContextFactory.SETUP_EJB_CONTEXT, true);
+        final Context context = new InitialContext(env);
+
+        final ContextSelector<EJBClientContext> newSelector = EJBClientContext.setSelector(new MockSelector());
+        assertTrue(newSelector instanceof EjbClientContextSelector);
+        context.close();
+        assertEquals(temp, EJBClientContext.setSelector(original));
+        endpoint.close();
+    }
+
     public static final String ANONYMOUS = "ANONYMOUS";
     public static final String DIGEST_MD5 = "DIGEST-MD5";
     public static final String JBOSS_LOCAL_USER = "JBOSS-LOCAL-USER";
@@ -446,6 +476,12 @@ public class ClientConnectionTest {
                     throw new UnsupportedCallbackException(current);
                 }
             }
+        }
+    }
+
+    private class MockSelector implements ContextSelector<EJBClientContext> {
+        public EJBClientContext getCurrent() {
+            return null;
         }
     }
 }

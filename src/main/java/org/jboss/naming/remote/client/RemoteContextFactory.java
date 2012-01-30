@@ -47,7 +47,7 @@ class RemoteContextFactory {
 
     private static final Logger log = Logger.getLogger(RemoteContextFactory.class);
 
-    static Context createVersionedContext(final Channel channel, final Hashtable<String, Object> environment) throws IOException {
+    static Context createVersionedContext(final Channel channel, final Hashtable<String, Object> environment, final Runnable... closeTasks) throws IOException {
         IoFuture<byte[]> futureHeader = ClientVersionReceiver.getVersions(channel);
         IoFuture.Status result = futureHeader.await(5, TimeUnit.SECONDS);
         switch (result) {
@@ -65,7 +65,7 @@ class RemoteContextFactory {
                 highest = current;
             }
         }
-        return new RemoteContext(Versions.getRemoteNamingStore(highest, channel), environment);
+        return new RemoteContext(Versions.getRemoteNamingStore(highest, channel), environment, closeTasks);
     }
 
     /**

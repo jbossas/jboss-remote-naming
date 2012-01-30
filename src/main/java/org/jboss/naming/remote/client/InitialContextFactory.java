@@ -24,6 +24,7 @@ package org.jboss.naming.remote.client;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Hashtable;
@@ -61,6 +62,8 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
     public static final String ENDPOINT = "jboss.naming.client.endpoint";
     public static final String CONNECTION = "jboss.naming.client.connection";
 
+    public static final String SETUP_EJB_CONTEXT = "jboss.naming.client.ejb.context";
+
     private static final String CLIENT_PROPS_FILE_NAME = "jboss-naming-client.properties";
 
     private static final long DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS = 5000;
@@ -85,6 +88,10 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             final Connection connection = getOrCreateConnection((Hashtable<String, Object>) env, findAndCreateClientProperties(env));
             final IoFuture<Channel> futureChannel = connection.openChannel("naming", OptionMap.EMPTY);
             final Channel channel = IoFutureHelper.get(futureChannel, DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS, TimeUnit.MILLISECONDS);
+
+            if (env.containsKey(SETUP_EJB_CONTEXT) && (Boolean)env.get(SETUP_EJB_CONTEXT)) {
+                return RemoteContextFactory.createVersionedContext(channel, (Hashtable<String, Object>) env, setupEjbContext(connection));
+            }
             return RemoteContextFactory.createVersionedContext(channel, (Hashtable<String, Object>) env);
         } catch (NamingException e) {
             throw e;
@@ -274,6 +281,30 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             }
         }
         return null;
+    }
+
+    /*
+        Temporary hack to allow remote ejbs to share the remote connection used by naming.
+     */
+    private Runnable setupEjbContext(final Connection connection) {
+        try {
+            final ClassLoader classLoader = InitialContextFactory.class.getClassLoader();
+            final Class<?> selectorClass = classLoader.loadClass("org.jboss.naming.remote.client.ejb.EjbClientContextSelector");
+            final Method setup = selectorClass.getMethod("setupSelector", Connection.class);
+            final Object previous = setup.invoke(null, connection);
+            return new Runnable() {
+                public void run() {
+                    try {
+                        final Method reset = selectorClass.getMethod("resetSelector", classLoader.loadClass("org.jboss.ejb.client.ContextSelector"));
+                        reset.invoke(null, previous);
+                    } catch (Throwable t) {
+                        throw new RuntimeException("Failed to reset EJB remote context", t);
+                    }
+                }
+            };
+        } catch (Throwable t) {
+            throw new RuntimeException("Failed to setup EJB remote context", t);
+        }
     }
 
     private class AnonymousCallbackHandler implements CallbackHandler {

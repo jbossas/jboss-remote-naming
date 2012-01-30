@@ -40,16 +40,18 @@ import static org.jboss.naming.remote.client.ClientUtil.namingEnumeration;
 public class RemoteContext implements Context, NameParser {
     private final Name prefix;
     private final Hashtable<String, Object> environment;
-    final RemoteNamingStore namingStore;
+    private final RemoteNamingStore namingStore;
+    private final Runnable[] closeTasks;
 
-    public RemoteContext(final RemoteNamingStore namingStore, final Hashtable<String, Object> environment) {
-        this(new CompositeName(), namingStore, environment);
+    public RemoteContext(final RemoteNamingStore namingStore, final Hashtable<String, Object> environment, final Runnable... closeTasks) {
+        this(new CompositeName(), namingStore, environment, closeTasks);
     }
 
-    public RemoteContext(final Name prefix, final RemoteNamingStore namingStore, final Hashtable<String, Object> environment) {
+    public RemoteContext(final Name prefix, final RemoteNamingStore namingStore, final Hashtable<String, Object> environment, final Runnable... closeTasks) {
         this.prefix = prefix;
         this.namingStore = namingStore;
         this.environment = environment;
+        this.closeTasks = closeTasks;
     }
 
     public Object lookup(final Name name) throws NamingException {
@@ -167,6 +169,9 @@ public class RemoteContext implements Context, NameParser {
 
     public void close() throws NamingException {
         namingStore.close();
+        for(Runnable closeTask : closeTasks) {
+            closeTask.run();
+        }
     }
 
     public String getNameInNamespace() throws NamingException {
