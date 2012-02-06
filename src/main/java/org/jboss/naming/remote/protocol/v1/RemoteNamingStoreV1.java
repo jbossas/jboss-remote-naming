@@ -26,7 +26,10 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.naming.Binding;
 import javax.naming.Context;
 import javax.naming.Name;
@@ -47,7 +50,7 @@ import org.xnio.IoUtils;
 public class RemoteNamingStoreV1 implements RemoteNamingStore {
     private static final Logger log = Logger.getLogger(RemoteNamingStoreV1.class);
 
-    protected final Executor executor = Executors.newFixedThreadPool(10);
+    private final ExecutorService executor = Executors.newCachedThreadPool(new DaemonThreadFactory());
     private final Channel channel;
 
     public RemoteNamingStoreV1(final Channel channel) {
@@ -149,6 +152,15 @@ public class RemoteNamingStoreV1 implements RemoteNamingStore {
     }
 
     public void close() throws NamingException {
+        // shutdown the executor service
+        try {
+            if (this.executor != null) {
+                this.executor.shutdown();
+            }
+        } catch (Exception e) {
+            // log and ignore
+            log.debug("Could not shutdown executor service", e);
+        }
         try {
             channel.close();
         } catch (IOException e) {
@@ -206,5 +218,32 @@ public class RemoteNamingStoreV1 implements RemoteNamingStore {
             }
         }
 
+    }
+
+    /**
+     * A thread factory which creates daemon threads which will be used for
+     * creating connections to cluster nodes
+     */
+    private static class DaemonThreadFactory implements ThreadFactory {
+
+        private static final AtomicInteger poolNumber = new AtomicInteger(1);
+        private final ThreadGroup group;
+        private final AtomicInteger threadNumber = new AtomicInteger(1);
+        private final String namePrefix;
+
+        DaemonThreadFactory() {
+            SecurityManager s = System.getSecurityManager();
+            group = (s != null) ? s.getThreadGroup() :
+                    Thread.currentThread().getThreadGroup();
+            namePrefix = "naming-client-message-receiver-" +
+                    poolNumber.getAndIncrement() +
+                    "-thread-";
+        }
+
+        public Thread newThread(Runnable r) {
+            Thread t = new Thread(group, r, namePrefix + threadNumber.getAndIncrement(), 0);
+            t.setDaemon(true);
+            return t;
+        }
     }
 }
