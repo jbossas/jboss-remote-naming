@@ -22,7 +22,10 @@
 
 package org.jboss.naming.remote.client;
 
+import java.util.Collections;
 import java.util.Hashtable;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.naming.Binding;
 import javax.naming.CompositeName;
 import javax.naming.Context;
@@ -31,6 +34,7 @@ import javax.naming.NameClassPair;
 import javax.naming.NameParser;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
+import org.jboss.logging.Logger;
 import static org.jboss.naming.remote.client.ClientUtil.isEmpty;
 import static org.jboss.naming.remote.client.ClientUtil.namingEnumeration;
 
@@ -38,16 +42,28 @@ import static org.jboss.naming.remote.client.ClientUtil.namingEnumeration;
  * @author John Bailey
  */
 public class RemoteContext implements Context, NameParser {
+    private static final Logger log = Logger.getLogger(RemoteContext.class);
+
     private final Name prefix;
     private final Hashtable<String, Object> environment;
     private final RemoteNamingStore namingStore;
-    private final Runnable[] closeTasks;
+    private final List<CloseTask> closeTasks;
 
-    public RemoteContext(final RemoteNamingStore namingStore, final Hashtable<String, Object> environment, final Runnable... closeTasks) {
+    private final AtomicBoolean closed = new AtomicBoolean();
+
+    public RemoteContext(final RemoteNamingStore namingStore, final Hashtable<String, Object> environment) {
+        this(namingStore, environment, Collections.<CloseTask>emptyList());
+    }
+
+    public RemoteContext(final RemoteNamingStore namingStore, final Hashtable<String, Object> environment, final List<CloseTask> closeTasks) {
         this(new CompositeName(), namingStore, environment, closeTasks);
     }
 
-    public RemoteContext(final Name prefix, final RemoteNamingStore namingStore, final Hashtable<String, Object> environment, final Runnable... closeTasks) {
+    public RemoteContext(final Name prefix, final RemoteNamingStore namingStore, final Hashtable<String, Object> environment) {
+        this(prefix, namingStore, environment, Collections.<CloseTask>emptyList());
+    }
+
+    public RemoteContext(final Name prefix, final RemoteNamingStore namingStore, final Hashtable<String, Object> environment, final List<CloseTask> closeTasks) {
         this.prefix = prefix;
         this.namingStore = namingStore;
         this.environment = environment;
@@ -66,7 +82,7 @@ public class RemoteContext implements Context, NameParser {
     }
 
     public void bind(final Name name, final Object object) throws NamingException {
-        namingStore.bind( getAbsoluteName(name), object);
+        namingStore.bind(getAbsoluteName(name), object);
     }
 
     public void bind(final String name, final Object object) throws NamingException {
@@ -168,9 +184,18 @@ public class RemoteContext implements Context, NameParser {
     }
 
     public void close() throws NamingException {
-        namingStore.close();
-        for(Runnable closeTask : closeTasks) {
-            closeTask.run();
+        if(closed.compareAndSet(false, true)) {
+            for (CloseTask closeTask : closeTasks) {
+                closeTask.close(false);
+            }
+        }
+    }
+
+    public void finalize() {
+        if(closed.compareAndSet(false, true)) {
+            for (CloseTask closeTask : closeTasks) {
+                closeTask.close(true);
+            }
         }
     }
 
@@ -187,5 +212,9 @@ public class RemoteContext implements Context, NameParser {
             return composeName(name, prefix);
         }
         return composeName(name, prefix);
+    }
+
+    static interface CloseTask {
+        void close(boolean isFinalize);
     }
 }

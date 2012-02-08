@@ -22,7 +22,6 @@
 package org.jboss.naming.remote;
 
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.URI;
@@ -43,7 +42,6 @@ import javax.security.auth.callback.CallbackHandler;
 import javax.security.auth.callback.NameCallback;
 import javax.security.auth.callback.UnsupportedCallbackException;
 import org.jboss.ejb.client.ContextSelector;
-import org.jboss.ejb.client.EJBClient;
 import org.jboss.ejb.client.EJBClientContext;
 import org.jboss.naming.remote.client.InitialContextFactory;
 import org.jboss.naming.remote.client.RemoteContext;
@@ -434,11 +432,6 @@ public class ClientConnectionTest {
     }
 
     public static final String ANONYMOUS = "ANONYMOUS";
-    public static final String DIGEST_MD5 = "DIGEST-MD5";
-    public static final String JBOSS_LOCAL_USER = "JBOSS-LOCAL-USER";
-    public static final String PLAIN = "PLAIN";
-    private static final String DOLLAR_LOCAL = "$local";
-    private static final String REALM = "Naming_Test_Realm";
 
     private static OptionMap createOptionMap() {
         OptionMap.Builder builder = OptionMap.builder();

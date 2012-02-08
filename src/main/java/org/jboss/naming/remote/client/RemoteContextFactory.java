@@ -25,8 +25,10 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Hashtable;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import javax.naming.Context;
+import javax.naming.NamingException;
 import org.jboss.logging.Logger;
 import static org.jboss.naming.remote.Constants.NAMING;
 import org.jboss.naming.remote.protocol.Versions;
@@ -47,7 +49,7 @@ class RemoteContextFactory {
 
     private static final Logger log = Logger.getLogger(RemoteContextFactory.class);
 
-    static Context createVersionedContext(final Channel channel, final Hashtable<String, Object> environment, final Runnable... closeTasks) throws IOException {
+    static Context createVersionedContext(final Channel channel, final Hashtable<String, Object> environment, final List<RemoteContext.CloseTask> closeTasks) throws IOException {
         IoFuture<byte[]> futureHeader = ClientVersionReceiver.getVersions(channel);
         IoFuture.Status result = futureHeader.await(5, TimeUnit.SECONDS);
         switch (result) {
@@ -65,7 +67,17 @@ class RemoteContextFactory {
                 highest = current;
             }
         }
-        return new RemoteContext(Versions.getRemoteNamingStore(highest, channel), environment, closeTasks);
+        final RemoteNamingStore store = Versions.getRemoteNamingStore(highest, channel);
+        closeTasks.add(new RemoteContext.CloseTask() {
+            public void close(boolean isFinalize) {
+                try {
+                    store.close();
+                } catch (NamingException e) {
+                    throw new RuntimeException("Failed to close remote naming store", e);
+                }
+            }
+        });
+        return new RemoteContext(store, environment, closeTasks);
     }
 
     /**

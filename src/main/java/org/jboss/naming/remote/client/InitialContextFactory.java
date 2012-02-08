@@ -27,7 +27,10 @@ import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Hashtable;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -43,12 +46,14 @@ import javax.security.sasl.RealmCallback;
 import javax.xml.bind.DatatypeConverter;
 
 import org.jboss.logging.Logger;
+import static org.jboss.naming.remote.client.ClientUtil.namingException;
+import org.jboss.naming.remote.client.cache.ConnectionCache;
+import org.jboss.naming.remote.client.cache.EndpointCache;
+
 import org.jboss.naming.remote.protocol.IoFutureHelper;
 import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.Connection;
 import org.jboss.remoting3.Endpoint;
-import org.jboss.remoting3.Remoting;
-import org.jboss.remoting3.remote.RemoteConnectionProviderFactory;
 import org.xnio.IoFuture;
 import org.xnio.Option;
 import org.xnio.OptionMap;
@@ -85,17 +90,22 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
     private static final OptionMap DEFAULT_CONNECTION_CREATION_OPTIONS = OptionMap.create(Options.SASL_POLICY_NOANONYMOUS, false);
     private static final OptionMap DEFAULT_CONNECTION_PROVIDER_CREATION_OPTIONS = OptionMap.create(Options.SSL_ENABLED, false);
 
+    private static final ConnectionCache connectionCache = new ConnectionCache();
+    private static final EndpointCache endpointCache = new EndpointCache();
+
     @SuppressWarnings("unchecked")
     public Context getInitialContext(final Hashtable<?, ?> env) throws NamingException {
         try {
-            final Connection connection = getOrCreateConnection((Hashtable<String, Object>) env, findAndCreateClientProperties(env));
+            final List<RemoteContext.CloseTask> closeTasks = new ArrayList<RemoteContext.CloseTask>();
+
+            final Connection connection = getOrCreateConnection((Hashtable<String, Object>) env, findAndCreateClientProperties(env), closeTasks);
             final IoFuture<Channel> futureChannel = connection.openChannel("naming", OptionMap.EMPTY);
             final Channel channel = IoFutureHelper.get(futureChannel, DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS, TimeUnit.MILLISECONDS);
 
             if (env.containsKey(SETUP_EJB_CONTEXT) && (Boolean)env.get(SETUP_EJB_CONTEXT)) {
-                return RemoteContextFactory.createVersionedContext(channel, (Hashtable<String, Object>) env, setupEjbContext(connection));
+                setupEjbContext(connection, closeTasks);
             }
-            return RemoteContextFactory.createVersionedContext(channel, (Hashtable<String, Object>) env);
+            return RemoteContextFactory.createVersionedContext(channel, (Hashtable<String, Object>) env, closeTasks);
         } catch (NamingException e) {
             throw e;
         } catch (Throwable t) {
@@ -103,17 +113,17 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         }
     }
 
-    private Connection getOrCreateConnection(final Hashtable<String, Object> env, final Properties clientProperties) throws IOException, NamingException, URISyntaxException {
+    private Connection getOrCreateConnection(final Hashtable<String, Object> env, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks) throws IOException, NamingException, URISyntaxException {
         final Connection connection;
         if (env.containsKey(CONNECTION)) {
             connection = (Connection) env.get(CONNECTION);
         } else {
-            connection = createConnection(getOrCreateEndpoint(env, clientProperties), clientProperties);
+            connection = createConnection(getOrCreateEndpoint(env, clientProperties, closeTasks), clientProperties, closeTasks);
         }
         return connection;
     }
 
-    private Connection createConnection(final Endpoint clientEndpoint, final Properties clientProperties) throws IOException, URISyntaxException, NamingException {
+    private Connection createConnection(final Endpoint clientEndpoint, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks) throws IOException, URISyntaxException, NamingException {
         // get connect options for the connection
         final OptionMap connectOptionsFromConfiguration = this.getOptionMapFromProperties(clientProperties, CONNECT_OPTIONS_PREFIX);
         // merge with defaults
@@ -135,21 +145,34 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             throw new NamingException("No provider URL configured for connection");
         }
         final URI connectionURI = new URI(connectionUrl);
-        final IoFuture<Connection> futureConnection = clientEndpoint.connect(connectionURI, connectOptions, callbackHandler);
-        return IoFutureHelper.get(futureConnection, connectionTimeout, TimeUnit.MILLISECONDS);
+        final Connection connection = connectionCache.get(clientEndpoint, connectionURI, connectOptions, callbackHandler, connectionTimeout);
+        closeTasks.add(new RemoteContext.CloseTask() {
+            public void close(final boolean isFinalize) {
+                try {
+                    if(isFinalize) {
+                        connection.closeAsync();
+                    } else {
+                        connection.close();
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException("Failed to release connection", e);
+                }
+            }
+        });
+        return connection;
     }
 
-    private Endpoint getOrCreateEndpoint(final Hashtable<String, Object> env, final Properties clientProperties) throws IOException {
+    private Endpoint getOrCreateEndpoint(final Hashtable<String, Object> env, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks) throws IOException {
         final Endpoint clientEndpoint;
         if (env.containsKey(ENDPOINT)) {
             clientEndpoint = (Endpoint) env.get(ENDPOINT);
         } else {
-            clientEndpoint = createEndpoint(clientProperties);
+            clientEndpoint = createEndpoint(clientProperties, closeTasks);
         }
         return clientEndpoint;
     }
 
-    private Endpoint createEndpoint(final Properties clientProperties) throws IOException {
+    private Endpoint createEndpoint(final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks) throws IOException {
         String clientEndpointName = clientProperties.getProperty(CLIENT_PROP_KEY_ENDPOINT_NAME);
         if (clientEndpointName == null) {
             clientEndpointName = "config-based-naming-client-endpoint";
@@ -157,12 +180,26 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         final OptionMap endPointCreationOptionsFromConfiguration = this.getOptionMapFromProperties(clientProperties, ENDPOINT_CREATION_OPTIONS_PREFIX);
         // merge with defaults
         final OptionMap endPointCreationOptions = this.mergeWithDefaults(DEFAULT_ENDPOINT_CREATION_OPTIONS, endPointCreationOptionsFromConfiguration);
-        // create the endpoint
-        final Endpoint clientEndpoint = Remoting.createEndpoint(clientEndpointName, endPointCreationOptions);
 
-        final OptionMap remoteConnectionProivderOptionsFromConfiguration = this.getOptionMapFromProperties(clientProperties, REMOTE_CONNECTION_PROVIDER_CREATE_OPTIONS_PREFIX);
-        final OptionMap remoteConnectionProivderOptions = this.mergeWithDefaults(DEFAULT_CONNECTION_PROVIDER_CREATION_OPTIONS, remoteConnectionProivderOptionsFromConfiguration);
-        clientEndpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), remoteConnectionProivderOptions);
+
+        final OptionMap remoteConnectionProviderOptionsFromConfiguration = this.getOptionMapFromProperties(clientProperties, REMOTE_CONNECTION_PROVIDER_CREATE_OPTIONS_PREFIX);
+        final OptionMap remoteConnectionProviderOptions = this.mergeWithDefaults(DEFAULT_CONNECTION_PROVIDER_CREATION_OPTIONS, remoteConnectionProviderOptionsFromConfiguration);
+
+        // create the endpoint
+        final Endpoint clientEndpoint = endpointCache.get(clientEndpointName, endPointCreationOptions, remoteConnectionProviderOptions);
+        closeTasks.add(new RemoteContext.CloseTask() {
+            public void close(final boolean isFinalize) {
+                try {
+                    if(isFinalize) {
+                        clientEndpoint.closeAsync();
+                    } else {
+                        clientEndpoint.close();
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException("Failed to release endpoint", e);
+                }
+            }
+        });
         return clientEndpoint;
     }
 
@@ -290,14 +327,14 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
     /*
         Temporary hack to allow remote ejbs to share the remote connection used by naming.
      */
-    private Runnable setupEjbContext(final Connection connection) {
+    private void setupEjbContext(final Connection connection, final List<RemoteContext.CloseTask> closeTasks) {
         try {
             final ClassLoader classLoader = InitialContextFactory.class.getClassLoader();
             final Class<?> selectorClass = classLoader.loadClass("org.jboss.naming.remote.client.ejb.EjbClientContextSelector");
             final Method setup = selectorClass.getMethod("setupSelector", Connection.class);
             final Object previous = setup.invoke(null, connection);
-            return new Runnable() {
-                public void run() {
+            closeTasks.add(new RemoteContext.CloseTask() {
+                public void close(final boolean isFinalize) {
                     try {
                         final Method reset = selectorClass.getMethod("resetSelector", classLoader.loadClass("org.jboss.ejb.client.ContextSelector"));
                         reset.invoke(null, previous);
@@ -305,7 +342,7 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
                         throw new RuntimeException("Failed to reset EJB remote context", t);
                     }
                 }
-            };
+            });
         } catch (Throwable t) {
             throw new RuntimeException("Failed to setup EJB remote context", t);
         }
@@ -359,6 +396,26 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
                     throw new UnsupportedCallbackException(current);
                 }
             }
+        }
+
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            AuthenticationCallbackHandler that = (AuthenticationCallbackHandler) o;
+
+            if (!Arrays.equals(password, that.password)) return false;
+            if (realm != null ? !realm.equals(that.realm) : that.realm != null) return false;
+            if (username != null ? !username.equals(that.username) : that.username != null) return false;
+
+            return true;
+        }
+
+        public int hashCode() {
+            int result = realm != null ? realm.hashCode() : 0;
+            result = 31 * result + (username != null ? username.hashCode() : 0);
+            result = 31 * result + (password != null ? Arrays.hashCode(password) : 0);
+            return result;
         }
     }
 }
