@@ -31,6 +31,7 @@ import java.util.Hashtable;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+
 import javax.naming.Context;
 import javax.naming.NamingException;
 import javax.security.auth.callback.Callback;
@@ -40,8 +41,8 @@ import javax.security.auth.callback.PasswordCallback;
 import javax.security.auth.callback.UnsupportedCallbackException;
 import javax.security.sasl.RealmCallback;
 import javax.xml.bind.DatatypeConverter;
+
 import org.jboss.logging.Logger;
-import static org.jboss.naming.remote.client.ClientUtil.namingException;
 import org.jboss.naming.remote.protocol.IoFutureHelper;
 import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.Connection;
@@ -52,6 +53,8 @@ import org.xnio.IoFuture;
 import org.xnio.Option;
 import org.xnio.OptionMap;
 import org.xnio.Options;
+
+import static org.jboss.naming.remote.client.ClientUtil.namingException;
 
 /**
  * @author John Bailey
@@ -209,7 +212,8 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             } else {
                 decodedPassword = null;
             }
-            return new AuthenticationCallbackHandler(userName, decodedPassword.toCharArray(), realm);
+
+            return new AuthenticationCallbackHandler(userName, decodedPassword == null ? null : decodedPassword.toCharArray(), realm);
         }
         return null;
     }
