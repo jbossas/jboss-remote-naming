@@ -316,7 +316,11 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             for (Callback current : callbacks) {
                 if (current instanceof NameCallback) {
                     NameCallback ncb = (NameCallback) current;
-                    ncb.setName("anonymous");
+                    ncb.setName("$local");
+                } else if (current instanceof RealmCallback) {
+                    RealmCallback rcb = (RealmCallback) current;
+                    String defaultText = rcb.getDefaultText();
+                    rcb.setText(defaultText); // For now just use the realm suggested.
                 } else {
                     throw new UnsupportedCallbackException(current);
                 }
