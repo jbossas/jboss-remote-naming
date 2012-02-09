@@ -29,10 +29,10 @@ import org.xnio.ssl.XnioSsl;
  * @author John Bailey
  */
 public class EndpointCache {
-    private final ConcurrentMap<Object, CacheEntry> cache = new ConcurrentHashMap<Object, CacheEntry>();
+    private final ConcurrentMap<CacheKey, CacheEntry> cache = new ConcurrentHashMap<CacheKey, CacheEntry>();
 
     public synchronized Endpoint get(final String endpointName, final OptionMap endPointCreationOptions, final OptionMap remoteConnectionProviderOptions) throws IOException {
-        final Object endpointHash = endpointHash(endpointName, endPointCreationOptions, remoteConnectionProviderOptions);
+        final CacheKey endpointHash = new CacheKey(remoteConnectionProviderOptions, endPointCreationOptions, endpointName);
         CacheEntry cacheEntry = cache.get(endpointHash);
         if (cacheEntry == null) {
             final Endpoint endpoint = Remoting.createEndpoint(endpointName, endPointCreationOptions);
@@ -45,11 +45,11 @@ public class EndpointCache {
         return cacheEntry.endpoint;
     }
 
-    public void release(final Object connectionHash) {
+    public void release(final CacheKey connectionHash) {
         this.release(connectionHash, false);
     }
 
-    public synchronized void release(final Object endpointHash, final boolean async) {
+    public synchronized void release(final CacheKey endpointHash, final boolean async) {
         final CacheEntry cacheEntry = cache.get(endpointHash);
         if (cacheEntry.referenceCount.decrementAndGet() == 0) {
             try {
@@ -69,20 +69,11 @@ public class EndpointCache {
         }
     }
 
-    private Object endpointHash(final String endpointName, final OptionMap connectOptions, final OptionMap remoteConnectionProviderOptions) {
-        final int prime = 31;
-        int result = 1;
-        result = prime * result + endpointName.hashCode();
-        result = prime * result + connectOptions.hashCode();
-        result = prime * result + remoteConnectionProviderOptions.hashCode();
-        return result;
-    }
-
     private class EndpointWrapper implements Endpoint {
-        private final Object endpointHash;
+        private final CacheKey endpointHash;
         private final Endpoint endpoint;
 
-        private EndpointWrapper(final Object endpointHash, final Endpoint endpoint) {
+        private EndpointWrapper(final CacheKey endpointHash, final Endpoint endpoint) {
             this.endpointHash = endpointHash;
             this.endpoint = endpoint;
         }
@@ -200,12 +191,49 @@ public class EndpointCache {
         }
     }
 
-    private class CacheEntry {
+    private static  class CacheEntry {
         private final AtomicInteger referenceCount = new AtomicInteger(0);
         private volatile Endpoint endpoint;
 
         private CacheEntry(final Endpoint endpoint) {
             this.endpoint = endpoint;
+        }
+    }
+
+    private static class CacheKey {
+        final String endpointName;
+        final OptionMap connectOptions;
+        final OptionMap remoteConnectionProviderOptions;
+
+        private CacheKey(final OptionMap remoteConnectionProviderOptions, final OptionMap connectOptions, final String endpointName) {
+            this.remoteConnectionProviderOptions = remoteConnectionProviderOptions;
+            this.connectOptions = connectOptions;
+            this.endpointName = endpointName;
+        }
+
+        @Override
+        public boolean equals(final Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            final CacheKey cacheKey = (CacheKey) o;
+
+            if (connectOptions != null ? !connectOptions.equals(cacheKey.connectOptions) : cacheKey.connectOptions != null)
+                return false;
+            if (endpointName != null ? !endpointName.equals(cacheKey.endpointName) : cacheKey.endpointName != null)
+                return false;
+            if (remoteConnectionProviderOptions != null ? !remoteConnectionProviderOptions.equals(cacheKey.remoteConnectionProviderOptions) : cacheKey.remoteConnectionProviderOptions != null)
+                return false;
+
+            return true;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = endpointName != null ? endpointName.hashCode() : 0;
+            result = 31 * result + (connectOptions != null ? connectOptions.hashCode() : 0);
+            result = 31 * result + (remoteConnectionProviderOptions != null ? remoteConnectionProviderOptions.hashCode() : 0);
+            return result;
         }
     }
 }
