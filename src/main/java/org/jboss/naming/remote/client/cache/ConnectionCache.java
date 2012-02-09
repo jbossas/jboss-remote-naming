@@ -1,9 +1,11 @@
 package org.jboss.naming.remote.client.cache;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
 import java.security.Principal;
 import java.util.Collection;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
@@ -11,6 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.security.auth.callback.CallbackHandler;
 
+import org.jboss.logging.Logger;
 import org.jboss.naming.remote.protocol.IoFutureHelper;
 import org.jboss.remoting3.Attachments;
 import org.jboss.remoting3.Channel;
@@ -24,6 +27,8 @@ import org.xnio.OptionMap;
  * @author John Bailey
  */
 public class ConnectionCache {
+    private static final Logger logger = Logger.getLogger(ConnectionCache.class);
+
     private final ConcurrentMap<CacheKey, CacheEntry> cache = new ConcurrentHashMap<CacheKey, CacheEntry>();
 
     public synchronized Connection get(final Endpoint clientEndpoint, final URI connectionURI, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout) throws IOException {
@@ -64,6 +69,12 @@ public class ConnectionCache {
             } finally {
                 cache.remove(connectionHash);
             }
+        }
+    }
+
+    public synchronized void shutdown() {
+        for(Map.Entry<CacheKey, CacheEntry> entry : cache.entrySet()) {
+            safeClose(entry.getValue().connection);
         }
     }
 
@@ -160,6 +171,15 @@ public class ConnectionCache {
             result = 31 * result + (connectOptions != null ? connectOptions.hashCode() : 0);
             result = 31 * result + (callbackHandlerClass != null ? callbackHandlerClass.hashCode() : 0);
             return result;
+        }
+    }
+
+
+    private static void safeClose(Closeable closable) {
+        try {
+            closable.close();
+        } catch (Throwable t) {
+            logger.debug("Failed to close connection ", t);
         }
     }
 }

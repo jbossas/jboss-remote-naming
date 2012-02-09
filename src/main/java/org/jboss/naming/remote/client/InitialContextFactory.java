@@ -46,10 +46,9 @@ import javax.security.sasl.RealmCallback;
 import javax.xml.bind.DatatypeConverter;
 
 import org.jboss.logging.Logger;
-import static org.jboss.naming.remote.client.ClientUtil.namingException;
+import org.jboss.naming.remote.client.cache.CacheShutdown;
 import org.jboss.naming.remote.client.cache.ConnectionCache;
 import org.jboss.naming.remote.client.cache.EndpointCache;
-
 import org.jboss.naming.remote.protocol.IoFutureHelper;
 import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.Connection;
@@ -92,6 +91,12 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
 
     private static final ConnectionCache connectionCache = new ConnectionCache();
     private static final EndpointCache endpointCache = new EndpointCache();
+
+    private static final CacheShutdown cacheShutdown = new CacheShutdown(connectionCache, endpointCache);
+
+    static {
+        cacheShutdown.registerShutdownHandler();
+    }
 
     @SuppressWarnings("unchecked")
     public Context getInitialContext(final Hashtable<?, ?> env) throws NamingException {
@@ -190,7 +195,7 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         closeTasks.add(new RemoteContext.CloseTask() {
             public void close(final boolean isFinalize) {
                 try {
-                    if(isFinalize) {
+                    if (isFinalize) {
                         clientEndpoint.closeAsync();
                     } else {
                         clientEndpoint.close();

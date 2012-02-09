@@ -1,13 +1,17 @@
 package org.jboss.naming.remote.client.cache;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.SocketAddress;
 import java.net.URI;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.net.ssl.SSLContext;
 import javax.security.auth.callback.CallbackHandler;
+
+import org.jboss.logging.Logger;
 import org.jboss.remoting3.Attachments;
 import org.jboss.remoting3.CloseHandler;
 import org.jboss.remoting3.Connection;
@@ -29,6 +33,8 @@ import org.xnio.ssl.XnioSsl;
  * @author John Bailey
  */
 public class EndpointCache {
+    private static final Logger logger = Logger.getLogger(EndpointCache.class);
+
     private final ConcurrentMap<CacheKey, CacheEntry> cache = new ConcurrentHashMap<CacheKey, CacheEntry>();
 
     public synchronized Endpoint get(final String endpointName, final OptionMap endPointCreationOptions, final OptionMap remoteConnectionProviderOptions) throws IOException {
@@ -66,6 +72,12 @@ public class EndpointCache {
             } finally {
                 cache.remove(endpointHash);
             }
+        }
+    }
+
+    public synchronized void shutdown() {
+        for(Map.Entry<CacheKey, CacheEntry> entry : cache.entrySet()) {
+            safeClose(entry.getValue().endpoint);
         }
     }
 
@@ -234,6 +246,14 @@ public class EndpointCache {
             result = 31 * result + (connectOptions != null ? connectOptions.hashCode() : 0);
             result = 31 * result + (remoteConnectionProviderOptions != null ? remoteConnectionProviderOptions.hashCode() : 0);
             return result;
+        }
+    }
+
+    private static void safeClose(Closeable closable) {
+        try {
+            closable.close();
+        } catch (Throwable t) {
+            logger.debug("Failed to close endpoint ", t);
         }
     }
 }
