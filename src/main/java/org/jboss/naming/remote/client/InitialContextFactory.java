@@ -104,7 +104,16 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
 
             final Channel channel = getOrCreateChannel((Hashtable<String, Object>) env, findAndCreateClientProperties(env), closeTasks, OptionMap.EMPTY, 5000);
 
-            if (env.containsKey(SETUP_EJB_CONTEXT) && (Boolean) env.get(SETUP_EJB_CONTEXT)) {
+            final Object setupEJBClientContextProp = env.get(SETUP_EJB_CONTEXT);
+            final Boolean setupEJBClientContext;
+            if (setupEJBClientContextProp instanceof String) {
+                setupEJBClientContext = Boolean.parseBoolean((String) setupEJBClientContextProp);
+            } else if (setupEJBClientContextProp instanceof Boolean) {
+                setupEJBClientContext = (Boolean) setupEJBClientContextProp;
+            } else {
+                setupEJBClientContext = Boolean.FALSE;
+            }
+            if (setupEJBClientContext) {
                 setupEjbContext(channel.getConnection(), closeTasks);
             }
             return RemoteContextFactory.createVersionedContext(channel, (Hashtable<String, Object>) env, closeTasks);
