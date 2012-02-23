@@ -25,6 +25,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.URI;
+import java.security.Principal;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -52,7 +54,10 @@ import org.jboss.remoting3.Connection;
 import org.jboss.remoting3.Endpoint;
 import org.jboss.remoting3.Remoting;
 import org.jboss.remoting3.remote.RemoteConnectionProviderFactory;
+import org.jboss.remoting3.security.AuthorizingCallbackHandler;
 import org.jboss.remoting3.security.ServerAuthenticationProvider;
+import org.jboss.remoting3.security.SimpleUserInfo;
+import org.jboss.remoting3.security.UserInfo;
 import org.jboss.remoting3.spi.NetworkServerProvider;
 import org.junit.AfterClass;
 import static org.junit.Assert.assertEquals;
@@ -446,13 +451,21 @@ public class ClientConnectionTest {
 
     private static class DefaultAuthenticationHandler implements ServerAuthenticationProvider {
         @Override
-        public CallbackHandler getCallbackHandler(String mechanismName) {
+        public AuthorizingCallbackHandler getCallbackHandler(String mechanismName) {
             if (mechanismName.equals(ANONYMOUS)) {
-                return new CallbackHandler() {
+                return new AuthorizingCallbackHandler() {
                     public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
                         for (Callback current : callbacks) {
                             throw new UnsupportedCallbackException(current, "ANONYMOUS mechanism so not expecting a callback");
                         }
+                    }
+
+                    @Override
+                    public UserInfo createUserInfo(Collection<Principal> remotingPrincipals) throws IOException {
+                        if (remotingPrincipals == null) {
+                            return null;
+                        }
+                        return new SimpleUserInfo(remotingPrincipals);
                     }
                 };
             }
