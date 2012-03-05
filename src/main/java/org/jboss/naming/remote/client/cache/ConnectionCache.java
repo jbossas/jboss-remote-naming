@@ -20,6 +20,7 @@ import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.CloseHandler;
 import org.jboss.remoting3.Connection;
 import org.jboss.remoting3.Endpoint;
+import org.jboss.remoting3.security.UserInfo;
 import org.xnio.IoFuture;
 import org.xnio.OptionMap;
 
@@ -89,6 +90,11 @@ public class ConnectionCache {
 
         public Collection<Principal> getPrincipals() {
             return delegate.getPrincipals();
+        }
+
+        @Override
+        public UserInfo getUserInfo() {
+            return delegate.getUserInfo();
         }
 
         public IoFuture<Channel> openChannel(final String s, final OptionMap optionMap) {
