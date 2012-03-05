@@ -99,6 +99,7 @@ public class ClientConnectionTest {
         Properties env = new Properties();
         env.put(Context.INITIAL_CONTEXT_FACTORY, org.jboss.naming.remote.client.InitialContextFactory.class.getName());
         env.put(Context.PROVIDER_URL, "remote://localhost:7999");
+        env.put("jboss.naming.client.ejb.context", "false");
         remoteContext = new InitialContext(env);
     }
 

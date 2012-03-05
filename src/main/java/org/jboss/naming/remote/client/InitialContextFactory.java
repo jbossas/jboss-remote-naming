@@ -107,7 +107,16 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             final IoFuture<Channel> futureChannel = connection.openChannel("naming", OptionMap.EMPTY);
             final Channel channel = IoFutureHelper.get(futureChannel, DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS, TimeUnit.MILLISECONDS);
 
-            if (env.containsKey(SETUP_EJB_CONTEXT) && (Boolean)env.get(SETUP_EJB_CONTEXT)) {
+            final Object setupEJBClientContextProp = env.get(SETUP_EJB_CONTEXT);
+            final Boolean setupEJBClientContext;
+            if (setupEJBClientContextProp instanceof String) {
+                setupEJBClientContext = Boolean.parseBoolean((String) setupEJBClientContextProp);
+            } else if (setupEJBClientContextProp instanceof Boolean) {
+                setupEJBClientContext = (Boolean) setupEJBClientContextProp;
+            } else {
+                setupEJBClientContext = Boolean.FALSE;
+            }
+            if (setupEJBClientContext) {
                 setupEjbContext(connection, closeTasks);
             }
             return RemoteContextFactory.createVersionedContext(channel, (Hashtable<String, Object>) env, closeTasks);
@@ -154,7 +163,7 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         closeTasks.add(new RemoteContext.CloseTask() {
             public void close(final boolean isFinalize) {
                 try {
-                    if(isFinalize) {
+                    if (isFinalize) {
                         connection.closeAsync();
                     } else {
                         connection.close();
