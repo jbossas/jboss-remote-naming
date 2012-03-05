@@ -22,29 +22,6 @@
 
 package org.jboss.naming.remote.client;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.lang.reflect.Method;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Hashtable;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.concurrent.TimeUnit;
-
-import javax.naming.Context;
-import javax.naming.NamingException;
-import javax.security.auth.callback.Callback;
-import javax.security.auth.callback.CallbackHandler;
-import javax.security.auth.callback.NameCallback;
-import javax.security.auth.callback.PasswordCallback;
-import javax.security.auth.callback.UnsupportedCallbackException;
-import javax.security.sasl.RealmCallback;
-import javax.xml.bind.DatatypeConverter;
-
 import org.jboss.logging.Logger;
 import org.jboss.naming.remote.client.cache.CacheShutdown;
 import org.jboss.naming.remote.client.cache.ConnectionCache;
@@ -58,7 +35,29 @@ import org.xnio.Option;
 import org.xnio.OptionMap;
 import org.xnio.Options;
 
-import static org.jboss.naming.remote.client.ClientUtil.namingException;
+import javax.naming.Context;
+import javax.naming.NamingException;
+import javax.security.auth.callback.Callback;
+import javax.security.auth.callback.CallbackHandler;
+import javax.security.auth.callback.NameCallback;
+import javax.security.auth.callback.PasswordCallback;
+import javax.security.auth.callback.UnsupportedCallbackException;
+import javax.security.sasl.RealmCallback;
+import javax.xml.bind.DatatypeConverter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Hashtable;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.TimeUnit;
+
+import static org.jboss.naming.remote.client.ClientUtil.*;
 
 /**
  * @author John Bailey
@@ -103,12 +102,10 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         try {
             final List<RemoteContext.CloseTask> closeTasks = new ArrayList<RemoteContext.CloseTask>();
 
-            final Connection connection = getOrCreateConnection((Hashtable<String, Object>) env, findAndCreateClientProperties(env), closeTasks);
-            final IoFuture<Channel> futureChannel = connection.openChannel("naming", OptionMap.EMPTY);
-            final Channel channel = IoFutureHelper.get(futureChannel, DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS, TimeUnit.MILLISECONDS);
+            final Channel channel = getOrCreateChannel((Hashtable<String, Object>) env, findAndCreateClientProperties(env), closeTasks, OptionMap.EMPTY, 5000);
 
-            if (env.containsKey(SETUP_EJB_CONTEXT) && (Boolean)env.get(SETUP_EJB_CONTEXT)) {
-                setupEjbContext(connection, closeTasks);
+            if (env.containsKey(SETUP_EJB_CONTEXT) && (Boolean) env.get(SETUP_EJB_CONTEXT)) {
+                setupEjbContext(channel.getConnection(), closeTasks);
             }
             return RemoteContextFactory.createVersionedContext(channel, (Hashtable<String, Object>) env, closeTasks);
         } catch (NamingException e) {
@@ -118,17 +115,23 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         }
     }
 
-    private Connection getOrCreateConnection(final Hashtable<String, Object> env, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks) throws IOException, NamingException, URISyntaxException {
-        final Connection connection;
+    private Channel getOrCreateChannel(final Hashtable<String, Object> env, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks,
+                                       final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis) throws IOException, NamingException, URISyntaxException {
+        final Channel channel;
         if (env.containsKey(CONNECTION)) {
-            connection = (Connection) env.get(CONNECTION);
+            final Connection connection = (Connection) env.get(CONNECTION);
+            // open a channel
+            final IoFuture<Channel> futureChannel = connection.openChannel("naming", channelCreationOptions);
+            channel = IoFutureHelper.get(futureChannel, channelCreationTimeoutInMillis, TimeUnit.MILLISECONDS);
+
         } else {
-            connection = createConnection(getOrCreateEndpoint(env, clientProperties, closeTasks), clientProperties, closeTasks);
+            channel = createChannel(getOrCreateEndpoint(env, clientProperties, closeTasks), clientProperties, closeTasks, channelCreationOptions, channelCreationTimeoutInMillis);
         }
-        return connection;
+        return channel;
     }
 
-    private Connection createConnection(final Endpoint clientEndpoint, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks) throws IOException, URISyntaxException, NamingException {
+    private Channel createChannel(final Endpoint clientEndpoint, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks,
+                                  final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis) throws IOException, URISyntaxException, NamingException {
         // get connect options for the connection
         final OptionMap connectOptionsFromConfiguration = this.getOptionMapFromProperties(clientProperties, CONNECT_OPTIONS_PREFIX);
         // merge with defaults
@@ -150,11 +153,12 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             throw new NamingException("No provider URL configured for connection");
         }
         final URI connectionURI = new URI(connectionUrl);
-        final Connection connection = connectionCache.get(clientEndpoint, connectionURI, connectOptions, callbackHandler, connectionTimeout);
+        final Channel channel = connectionCache.getChannel(clientEndpoint, connectionURI, connectOptions, callbackHandler, connectionTimeout, channelCreationOptions, channelCreationTimeoutInMillis);
         closeTasks.add(new RemoteContext.CloseTask() {
             public void close(final boolean isFinalize) {
                 try {
-                    if(isFinalize) {
+                    final Connection connection = channel.getConnection();
+                    if (isFinalize) {
                         connection.closeAsync();
                     } else {
                         connection.close();
@@ -164,7 +168,7 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
                 }
             }
         });
-        return connection;
+        return channel;
     }
 
     private Endpoint getOrCreateEndpoint(final Hashtable<String, Object> env, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks) throws IOException {
