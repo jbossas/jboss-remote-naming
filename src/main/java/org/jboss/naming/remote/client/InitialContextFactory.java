@@ -324,6 +324,12 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
 
             } catch (IOException e) {
                 throw new RuntimeException("Could not load " + CLIENT_PROPS_FILE_NAME, e);
+            } finally {
+                try {
+                    clientPropsInputStream.close();
+                } catch (IOException e) {
+                    logger.error("Could not close stream", e);
+                }
             }
         }
         return null;
