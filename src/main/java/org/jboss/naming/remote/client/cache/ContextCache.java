@@ -55,7 +55,7 @@ public class ContextCache {
      * @return
      * @throws IOException
      */
-    public synchronized Context getChannel(final Endpoint clientEndpoint, final URI connectionURI, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout,
+    public synchronized Context getContext(final Endpoint clientEndpoint, final URI connectionURI, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout,
                                            final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final Hashtable<String, Object> env, final List<RemoteContext.CloseTask> closeTasks) throws IOException, NamingException {
         final CacheKey key = new CacheKey(clientEndpoint, callbackHandler.getClass(), connectOptions, connectionURI);
         CacheEntry cacheEntry = cache.get(key);
@@ -71,6 +71,20 @@ public class ContextCache {
                     final Context context = ChannelSetup.createContext(channel, env, closeTasks);
                     cacheEntry = new CacheEntry(new ConnectionWrapper(key, connection), context);
                     cache.put(key, cacheEntry);
+                    closeTasks.add(new RemoteContext.CloseTask() {
+                        @Override
+                        public void close(final boolean isFinalize) {
+                            try {
+                                if(isFinalize) {
+                                    connection.closeAsync();
+                                } else {
+                                    connection.close();
+                                }
+                            } catch (IOException e) {
+                                logger.error("Exception closing connection", e);
+                            }
+                        }
+                    });
                 }
             }
         }

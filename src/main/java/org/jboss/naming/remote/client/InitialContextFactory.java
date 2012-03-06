@@ -124,12 +124,12 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
 
         } else {
             final Endpoint endpoint = getOrCreateEndpoint(env, clientProperties, closeTasks);
-            return getCachedContext(endpoint, clientProperties, closeTasks, channelCreationOptions, channelCreationTimeoutInMillis, env, closeTasks);
+            return getCachedContext(endpoint, clientProperties, closeTasks, channelCreationOptions, channelCreationTimeoutInMillis, env);
         }
     }
 
     private Context getCachedContext(final Endpoint clientEndpoint, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks,
-                                     final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final Hashtable<String, Object> env, final List<RemoteContext.CloseTask> tasks) throws IOException, URISyntaxException, NamingException {
+                                     final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final Hashtable<String, Object> env) throws IOException, URISyntaxException, NamingException {
         // get connect options for the connection
         final OptionMap connectOptionsFromConfiguration = this.getOptionMapFromProperties(clientProperties, CONNECT_OPTIONS_PREFIX);
         // merge with defaults
@@ -151,7 +151,7 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             throw new NamingException("No provider URL configured for connection");
         }
         final URI connectionURI = new URI(connectionUrl);
-        return CONTEXT_CACHE.getChannel(clientEndpoint, connectionURI, connectOptions, callbackHandler, connectionTimeout, channelCreationOptions, channelCreationTimeoutInMillis, env, tasks);
+        return CONTEXT_CACHE.getContext(clientEndpoint, connectionURI, connectOptions, callbackHandler, connectionTimeout, channelCreationOptions, channelCreationTimeoutInMillis, env, closeTasks);
     }
 
     private Endpoint getOrCreateEndpoint(final Hashtable<String, Object> env, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks) throws IOException {
