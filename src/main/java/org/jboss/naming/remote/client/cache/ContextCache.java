@@ -1,6 +1,25 @@
 package org.jboss.naming.remote.client.cache;
 
+import java.io.Closeable;
+import java.io.IOException;
+import java.net.URI;
+import java.security.Principal;
+import java.util.Collection;
+import java.util.Hashtable;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import javax.naming.Context;
+import javax.naming.NamingException;
+import javax.security.auth.callback.CallbackHandler;
+
 import org.jboss.logging.Logger;
+import org.jboss.naming.remote.client.ChannelSetup;
+import org.jboss.naming.remote.client.RemoteContext;
 import org.jboss.naming.remote.protocol.IoFutureHelper;
 import org.jboss.remoting3.Attachments;
 import org.jboss.remoting3.Channel;
@@ -11,72 +30,33 @@ import org.jboss.remoting3.security.UserInfo;
 import org.xnio.IoFuture;
 import org.xnio.OptionMap;
 
-import javax.security.auth.callback.CallbackHandler;
-import java.io.Closeable;
-import java.io.IOException;
-import java.net.URI;
-import java.security.Principal;
-import java.util.Collection;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-
 /**
  * @author John Bailey
  */
-public class ConnectionCache {
-    private static final Logger logger = Logger.getLogger(ConnectionCache.class);
+public class ContextCache {
+    private static final Logger logger = Logger.getLogger(ContextCache.class);
 
     private final ConcurrentMap<CacheKey, CacheEntry> cache = new ConcurrentHashMap<CacheKey, CacheEntry>();
-
-    /**
-     * @param clientEndpoint
-     * @param connectionURI
-     * @param connectOptions
-     * @param callbackHandler
-     * @param connectionTimeout
-     * @return
-     * @throws IOException
-     * @deprecated Since 1.0.2.Final. Use {@link #getChannel(org.jboss.remoting3.Endpoint, java.net.URI, org.xnio.OptionMap, javax.security.auth.callback.CallbackHandler, long, org.xnio.OptionMap, long)}
-     *             instead
-     */
-    @Deprecated
-    public synchronized Connection get(final Endpoint clientEndpoint, final URI connectionURI, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout) throws IOException {
-        final CacheKey key = new CacheKey(clientEndpoint, callbackHandler.getClass(), connectOptions, connectionURI);
-        CacheEntry cacheEntry = cache.get(key);
-        if (cacheEntry == null) {
-            synchronized (this) {
-                cacheEntry = cache.get(key);
-                if (cacheEntry == null) {
-                    final IoFuture<Connection> futureConnection = clientEndpoint.connect(connectionURI, connectOptions, callbackHandler);
-                    cacheEntry = new CacheEntry(new ConnectionWrapper(key, IoFutureHelper.get(futureConnection, connectionTimeout, TimeUnit.MILLISECONDS)));
-                    cache.put(key, cacheEntry);
-                }
-            }
-        }
-        cacheEntry.referenceCount.incrementAndGet();
-        return cacheEntry.connection;
-    }
 
     /**
      * Returns a {@link Channel} for the passed connection properties. If the connection is already created
      * and cached for the passed connection properties, then the cached channel will be returned. Else a new
      * connection and channel will be created and that new channel returned.
      *
-     * @param clientEndpoint                 The {@link Endpoint} that will be used to open a connection
+     *
+     * @param clientEndpoint                 The {@link org.jboss.remoting3.Endpoint} that will be used to open a connection
      * @param connectionURI                  The connection URI
      * @param connectOptions                 The options to be used for connection creation
      * @param callbackHandler                The callback handler to be used for connection creation
      * @param connectionTimeout              The connection timeout in milli seconds that will be used while creating a connection
-     * @param channelCreationOptions         The {@link OptionMap options} that will be used if/when the channel is created
+     * @param channelCreationOptions         The {@link org.xnio.OptionMap options} that will be used if/when the channel is created
      * @param channelCreationTimeoutInMillis The timeout in milli seconds, that will be used while opening a channel
+     * @param closeTasks
      * @return
      * @throws IOException
      */
-    public synchronized Channel getChannel(final Endpoint clientEndpoint, final URI connectionURI, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout,
-                                           final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis) throws IOException {
+    public synchronized Context getChannel(final Endpoint clientEndpoint, final URI connectionURI, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout,
+                                           final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final Hashtable<String, Object> env, final List<RemoteContext.CloseTask> closeTasks) throws IOException, NamingException {
         final CacheKey key = new CacheKey(clientEndpoint, callbackHandler.getClass(), connectOptions, connectionURI);
         CacheEntry cacheEntry = cache.get(key);
         if (cacheEntry == null) {
@@ -88,13 +68,14 @@ public class ConnectionCache {
                     // open a channel
                     final IoFuture<Channel> futureChannel = connection.openChannel("naming", channelCreationOptions);
                     final Channel channel = IoFutureHelper.get(futureChannel, channelCreationTimeoutInMillis, TimeUnit.MILLISECONDS);
-                    cacheEntry = new CacheEntry(new ConnectionWrapper(key, connection), channel);
+                    final Context context = ChannelSetup.createContext(channel, env, closeTasks);
+                    cacheEntry = new CacheEntry(new ConnectionWrapper(key, connection), context);
                     cache.put(key, cacheEntry);
                 }
             }
         }
         cacheEntry.referenceCount.incrementAndGet();
-        return cacheEntry.channel;
+        return cacheEntry.context;
     }
 
     public void release(final Object connectionHash) {
@@ -158,7 +139,7 @@ public class ConnectionCache {
         }
 
         public void close() throws IOException {
-            ConnectionCache.this.release(connectionHash);
+            ContextCache.this.release(connectionHash);
         }
 
         public void awaitClosed() throws InterruptedException {
@@ -170,7 +151,7 @@ public class ConnectionCache {
         }
 
         public void closeAsync() {
-            ConnectionCache.this.release(connectionHash, true);
+            ContextCache.this.release(connectionHash, true);
         }
 
         public Key addCloseHandler(CloseHandler<? super Connection> closeHandler) {
@@ -185,16 +166,11 @@ public class ConnectionCache {
     private class CacheEntry {
         private final AtomicInteger referenceCount = new AtomicInteger(0);
         private final Connection connection;
-        private final Channel channel;
+        private final Context context;
 
-        private CacheEntry(final Connection connection) {
+        private CacheEntry(final Connection connection, final Context context) {
             this.connection = connection;
-            this.channel = null;
-        }
-
-        private CacheEntry(final Connection connection, final Channel channel) {
-            this.connection = connection;
-            this.channel = channel;
+            this.context = context;
         }
     }
 

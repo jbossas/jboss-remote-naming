@@ -214,7 +214,7 @@ public class RemoteContext implements Context, NameParser {
         return composeName(name, prefix);
     }
 
-    static interface CloseTask {
+    public static interface CloseTask {
         void close(boolean isFinalize);
     }
 }

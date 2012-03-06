@@ -22,31 +22,8 @@
 
 package org.jboss.naming.remote.client;
 
-import org.jboss.logging.Logger;
-import org.jboss.naming.remote.client.cache.CacheShutdown;
-import org.jboss.naming.remote.client.cache.ConnectionCache;
-import org.jboss.naming.remote.client.cache.EndpointCache;
-import org.jboss.naming.remote.protocol.IoFutureHelper;
-import org.jboss.remoting3.Channel;
-import org.jboss.remoting3.Connection;
-import org.jboss.remoting3.Endpoint;
-import org.xnio.IoFuture;
-import org.xnio.Option;
-import org.xnio.OptionMap;
-import org.xnio.Options;
-
-import javax.naming.Context;
-import javax.naming.NamingException;
-import javax.security.auth.callback.Callback;
-import javax.security.auth.callback.CallbackHandler;
-import javax.security.auth.callback.NameCallback;
-import javax.security.auth.callback.PasswordCallback;
-import javax.security.auth.callback.UnsupportedCallbackException;
-import javax.security.sasl.RealmCallback;
-import javax.xml.bind.DatatypeConverter;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.Method;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -57,7 +34,30 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
-import static org.jboss.naming.remote.client.ClientUtil.*;
+import javax.naming.Context;
+import javax.naming.NamingException;
+import javax.security.auth.callback.Callback;
+import javax.security.auth.callback.CallbackHandler;
+import javax.security.auth.callback.NameCallback;
+import javax.security.auth.callback.PasswordCallback;
+import javax.security.auth.callback.UnsupportedCallbackException;
+import javax.security.sasl.RealmCallback;
+import javax.xml.bind.DatatypeConverter;
+
+import org.jboss.logging.Logger;
+import org.jboss.naming.remote.client.cache.CacheShutdown;
+import org.jboss.naming.remote.client.cache.ContextCache;
+import org.jboss.naming.remote.client.cache.EndpointCache;
+import org.jboss.naming.remote.protocol.IoFutureHelper;
+import org.jboss.remoting3.Channel;
+import org.jboss.remoting3.Connection;
+import org.jboss.remoting3.Endpoint;
+import org.xnio.IoFuture;
+import org.xnio.Option;
+import org.xnio.OptionMap;
+import org.xnio.Options;
+
+import static org.jboss.naming.remote.client.ClientUtil.namingException;
 
 /**
  * @author John Bailey
@@ -88,10 +88,10 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
     private static final OptionMap DEFAULT_CONNECTION_CREATION_OPTIONS = OptionMap.create(Options.SASL_POLICY_NOANONYMOUS, false);
     private static final OptionMap DEFAULT_CONNECTION_PROVIDER_CREATION_OPTIONS = OptionMap.create(Options.SSL_ENABLED, false);
 
-    private static final ConnectionCache connectionCache = new ConnectionCache();
+    private static final ContextCache CONTEXT_CACHE = new ContextCache();
     private static final EndpointCache endpointCache = new EndpointCache();
 
-    private static final CacheShutdown cacheShutdown = new CacheShutdown(connectionCache, endpointCache);
+    private static final CacheShutdown cacheShutdown = new CacheShutdown(CONTEXT_CACHE, endpointCache);
 
     static {
         cacheShutdown.registerShutdownHandler();
@@ -100,23 +100,9 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
     @SuppressWarnings("unchecked")
     public Context getInitialContext(final Hashtable<?, ?> env) throws NamingException {
         try {
-            final List<RemoteContext.CloseTask> closeTasks = new ArrayList<RemoteContext.CloseTask>();
 
-            final Channel channel = getOrCreateChannel((Hashtable<String, Object>) env, findAndCreateClientProperties(env), closeTasks, OptionMap.EMPTY, 5000);
+           return getOrCreateContext((Hashtable<String, Object>) env, findAndCreateClientProperties(env), OptionMap.EMPTY, 5000);
 
-            final Object setupEJBClientContextProp = env.get(SETUP_EJB_CONTEXT);
-            final Boolean setupEJBClientContext;
-            if (setupEJBClientContextProp instanceof String) {
-                setupEJBClientContext = Boolean.parseBoolean((String) setupEJBClientContextProp);
-            } else if (setupEJBClientContextProp instanceof Boolean) {
-                setupEJBClientContext = (Boolean) setupEJBClientContextProp;
-            } else {
-                setupEJBClientContext = Boolean.FALSE;
-            }
-            if (setupEJBClientContext) {
-                setupEjbContext(channel.getConnection(), closeTasks);
-            }
-            return RemoteContextFactory.createVersionedContext(channel, (Hashtable<String, Object>) env, closeTasks);
         } catch (NamingException e) {
             throw e;
         } catch (Throwable t) {
@@ -124,8 +110,9 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         }
     }
 
-    private Channel getOrCreateChannel(final Hashtable<String, Object> env, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks,
+    private Context getOrCreateContext(final Hashtable<String, Object> env, final Properties clientProperties,
                                        final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis) throws IOException, NamingException, URISyntaxException {
+        final List<RemoteContext.CloseTask> closeTasks = new ArrayList<RemoteContext.CloseTask>();
         final Channel channel;
         if (env.containsKey(CONNECTION)) {
             final Connection connection = (Connection) env.get(CONNECTION);
@@ -133,14 +120,16 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             final IoFuture<Channel> futureChannel = connection.openChannel("naming", channelCreationOptions);
             channel = IoFutureHelper.get(futureChannel, channelCreationTimeoutInMillis, TimeUnit.MILLISECONDS);
 
+            return ChannelSetup.createContext(channel, env, closeTasks);
+
         } else {
-            channel = createChannel(getOrCreateEndpoint(env, clientProperties, closeTasks), clientProperties, closeTasks, channelCreationOptions, channelCreationTimeoutInMillis);
+            final Endpoint endpoint = getOrCreateEndpoint(env, clientProperties, closeTasks);
+            return getCachedContext(endpoint, clientProperties, closeTasks, channelCreationOptions, channelCreationTimeoutInMillis, env, closeTasks);
         }
-        return channel;
     }
 
-    private Channel createChannel(final Endpoint clientEndpoint, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks,
-                                  final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis) throws IOException, URISyntaxException, NamingException {
+    private Context getCachedContext(final Endpoint clientEndpoint, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks,
+                                     final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final Hashtable<String, Object> env, final List<RemoteContext.CloseTask> tasks) throws IOException, URISyntaxException, NamingException {
         // get connect options for the connection
         final OptionMap connectOptionsFromConfiguration = this.getOptionMapFromProperties(clientProperties, CONNECT_OPTIONS_PREFIX);
         // merge with defaults
@@ -162,22 +151,7 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             throw new NamingException("No provider URL configured for connection");
         }
         final URI connectionURI = new URI(connectionUrl);
-        final Channel channel = connectionCache.getChannel(clientEndpoint, connectionURI, connectOptions, callbackHandler, connectionTimeout, channelCreationOptions, channelCreationTimeoutInMillis);
-        closeTasks.add(new RemoteContext.CloseTask() {
-            public void close(final boolean isFinalize) {
-                try {
-                    final Connection connection = channel.getConnection();
-                    if (isFinalize) {
-                        connection.closeAsync();
-                    } else {
-                        connection.close();
-                    }
-                } catch (IOException e) {
-                    throw new RuntimeException("Failed to release connection", e);
-                }
-            }
-        });
-        return channel;
+        return CONTEXT_CACHE.getChannel(clientEndpoint, connectionURI, connectOptions, callbackHandler, connectionTimeout, channelCreationOptions, channelCreationTimeoutInMillis, env, tasks);
     }
 
     private Endpoint getOrCreateEndpoint(final Hashtable<String, Object> env, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks) throws IOException {
@@ -346,30 +320,6 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             }
         }
         return null;
-    }
-
-    /*
-        Temporary hack to allow remote ejbs to share the remote connection used by naming.
-     */
-    private void setupEjbContext(final Connection connection, final List<RemoteContext.CloseTask> closeTasks) {
-        try {
-            final ClassLoader classLoader = InitialContextFactory.class.getClassLoader();
-            final Class<?> selectorClass = classLoader.loadClass("org.jboss.naming.remote.client.ejb.EjbClientContextSelector");
-            final Method setup = selectorClass.getMethod("setupSelector", Connection.class);
-            final Object previous = setup.invoke(null, connection);
-            closeTasks.add(new RemoteContext.CloseTask() {
-                public void close(final boolean isFinalize) {
-                    try {
-                        final Method reset = selectorClass.getMethod("resetSelector", classLoader.loadClass("org.jboss.ejb.client.ContextSelector"));
-                        reset.invoke(null, previous);
-                    } catch (Throwable t) {
-                        throw new RuntimeException("Failed to reset EJB remote context", t);
-                    }
-                }
-            });
-        } catch (Throwable t) {
-            throw new RuntimeException("Failed to setup EJB remote context", t);
-        }
     }
 
     private class AnonymousCallbackHandler implements CallbackHandler {

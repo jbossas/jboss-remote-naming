@@ -11,11 +11,11 @@ import java.security.PrivilegedAction;
 public class CacheShutdown implements Runnable {
 
     private final EndpointCache endpointCache;
-    private final ConnectionCache connectionCache;
+    private final ContextCache contextCache;
 
 
-    public CacheShutdown(final ConnectionCache connectionCache, final EndpointCache endpointCache) {
-        this.connectionCache = connectionCache;
+    public CacheShutdown(final ContextCache contextCache, final EndpointCache endpointCache) {
+        this.contextCache = contextCache;
         this.endpointCache = endpointCache;
     }
 
@@ -30,7 +30,7 @@ public class CacheShutdown implements Runnable {
 
 
     public void run() {
-        connectionCache.shutdown();
+        contextCache.shutdown();
         endpointCache.shutdown();
     }
 }
