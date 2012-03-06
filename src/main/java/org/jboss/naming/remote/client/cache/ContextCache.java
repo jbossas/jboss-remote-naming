@@ -112,6 +112,17 @@ public class ContextCache {
 
             } finally {
                 cache.remove(connectionHash);
+                // close real connections finally
+                ConnectionWrapper conWrapper = (ConnectionWrapper) cacheEntry.connection;
+                if (async) {
+                    conWrapper.delegate.closeAsync();
+                } else {
+                    try {
+                        conWrapper.delegate.close();
+                    } catch (IOException e) {
+                        throw new RuntimeException("Failed to close connection", e);
+                    }
+                }
             }
         }
     }

@@ -71,6 +71,17 @@ public class EndpointCache {
 
             } finally {
                 cache.remove(endpointHash);
+                // close real endpoints finally
+                EndpointWrapper epWrapper = (EndpointWrapper) cacheEntry.endpoint;
+                if (async) {
+                    epWrapper.endpoint.closeAsync();
+                } else {
+                    try {
+                        epWrapper.endpoint.close();
+                    } catch (IOException e) {
+                       throw new RuntimeException("Failed to close endpoint", e);
+                    }
+                }
             }
         }
     }
