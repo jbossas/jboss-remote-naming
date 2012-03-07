@@ -33,7 +33,7 @@
 
     <groupId>org.jboss</groupId>
     <artifactId>jboss-remote-naming</artifactId>
-    <version>1.0.2.Final</version>
+    <version>1.0.3.Final-SNAPSHOT</version>
 
     <name>JBoss Remote Naming</name>
     <description>Library for remote naming (JNDI) with JBoss AS</description>
