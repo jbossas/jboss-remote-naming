@@ -18,7 +18,6 @@ import org.jboss.remoting3.remote.RemoteConnectionProviderFactory;
 import org.jboss.remoting3.spi.NetworkServerProvider;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.xnio.OptionMap;
 import org.xnio.Xnio;
@@ -55,14 +54,11 @@ public class ConcurrentConnectionTest {
     }
 
     @Test
-    @Ignore("Needs a jboss-remoting update, due to an issue where the same " +
-            "message ID could be allocated and used when multiple threads attempt to send a message" +
-            "at once")
     public void multiThreadedStressTest() throws NamingException {
-        ExecutorService executorService = Executors.newFixedThreadPool(10);
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
         localContext.bind("test", "TestValue");
         try {
-            final int NUM_CALLS = 100;
+            final int NUM_CALLS = 30;
             final Future[] futures = new Future[NUM_CALLS];
             for (int i = 0; i < NUM_CALLS; ++i) {
                 futures[i] = executorService.submit(new Runnable() {
