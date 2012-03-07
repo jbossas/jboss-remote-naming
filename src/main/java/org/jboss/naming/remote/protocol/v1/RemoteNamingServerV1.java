@@ -23,16 +23,19 @@ package org.jboss.naming.remote.protocol.v1;
 
 import java.io.DataInputStream;
 import java.io.IOException;
+
 import javax.management.RuntimeMBeanException;
+
 import org.jboss.logging.Logger;
-import static org.jboss.naming.remote.protocol.v1.WriteUtil.writeExceptionResponse;
+import org.jboss.naming.remote.protocol.ProtocolCommand;
 import org.jboss.naming.remote.server.RemoteNamingServer;
 import org.jboss.naming.remote.server.RemoteNamingServerLogger;
 import org.jboss.naming.remote.server.RemoteNamingService;
-import org.jboss.naming.remote.protocol.ProtocolCommand;
 import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.MessageInputStream;
 import org.xnio.IoUtils;
+
+import static org.jboss.naming.remote.protocol.v1.WriteUtil.writeExceptionResponse;
 
 /**
  * @author John Bailey
@@ -103,7 +106,7 @@ public class RemoteNamingServerV1 implements RemoteNamingServer {
                 } else {
                     throw new IOException("Unrecognised Message ID");
                 }
-            } catch (IOException e) {
+            } catch (Throwable e) {
                 logger.unnexpectedError(e);
                 IoUtils.safeClose(dis);
             } finally {

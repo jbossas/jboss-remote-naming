@@ -1,10 +1,8 @@
-package org.jboss.naming.remote.client.cache;
+package org.jboss.naming.remote.client;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
-import java.security.Principal;
-import java.util.Collection;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
@@ -13,28 +11,23 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.naming.Context;
 import javax.naming.NamingException;
 import javax.security.auth.callback.CallbackHandler;
 
 import org.jboss.logging.Logger;
-import org.jboss.naming.remote.client.ChannelSetup;
-import org.jboss.naming.remote.client.RemoteContext;
 import org.jboss.naming.remote.protocol.IoFutureHelper;
-import org.jboss.remoting3.Attachments;
 import org.jboss.remoting3.Channel;
-import org.jboss.remoting3.CloseHandler;
 import org.jboss.remoting3.Connection;
 import org.jboss.remoting3.Endpoint;
-import org.jboss.remoting3.security.UserInfo;
 import org.xnio.IoFuture;
 import org.xnio.OptionMap;
 
 /**
  * @author John Bailey
+ * @author Stuart Douglas
  */
-public class ContextCache {
-    private static final Logger logger = Logger.getLogger(ContextCache.class);
+public class NamingStoreCache {
+    private static final Logger logger = Logger.getLogger(NamingStoreCache.class);
 
     private final ConcurrentMap<CacheKey, CacheEntry> cache = new ConcurrentHashMap<CacheKey, CacheEntry>();
 
@@ -50,12 +43,12 @@ public class ContextCache {
      * @param connectionTimeout              The connection timeout in milli seconds that will be used while creating a connection
      * @param channelCreationOptions         The {@link org.xnio.OptionMap options} that will be used if/when the channel is created
      * @param channelCreationTimeoutInMillis The timeout in milli seconds, that will be used while opening a channel
-     * @param closeTasks
+     * @param contextCloseTasks              The tasks to be performed when the context is closed
      * @return
      * @throws IOException
      */
-    public synchronized Context getContext(final Endpoint clientEndpoint, final URI connectionURI, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout,
-                                           final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final Hashtable<String, Object> env, final List<RemoteContext.CloseTask> closeTasks) throws IOException, NamingException {
+    public synchronized RemoteNamingStore getRemoteNamingStore(final Endpoint clientEndpoint, final URI connectionURI, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout,
+                                                               final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final Hashtable<String, Object> env, final List<RemoteContext.CloseTask> contextCloseTasks) throws IOException, NamingException {
         final CacheKey key = new CacheKey(clientEndpoint, callbackHandler.getClass(), connectOptions, connectionURI);
         CacheEntry cacheEntry = cache.get(key);
         if (cacheEntry == null) {
@@ -64,33 +57,23 @@ public class ContextCache {
             // open a channel
             final IoFuture<Channel> futureChannel = connection.openChannel("naming", channelCreationOptions);
             final Channel channel = IoFutureHelper.get(futureChannel, channelCreationTimeoutInMillis, TimeUnit.MILLISECONDS);
-            final Context context = ChannelSetup.createContext(channel, env, closeTasks);
-            cacheEntry = new CacheEntry(new ConnectionWrapper(key, connection), context);
+            final RemoteNamingStore store = RemoteContextFactory.createVersionedStore(channel);
+            cacheEntry = new CacheEntry(connection, store);
             cache.put(key, cacheEntry);
-            closeTasks.add(new RemoteContext.CloseTask() {
-                @Override
-                public void close(final boolean isFinalize) {
-                    try {
-                        if (isFinalize) {
-                            connection.closeAsync();
-                        } else {
-                            connection.close();
-                        }
-                    } catch (IOException e) {
-                        logger.error("Exception closing connection", e);
-                    }
-                }
-            });
         }
+
+        //when the context is closed we need to release and decrease the reference count
+        contextCloseTasks.add(new RemoteContext.CloseTask() {
+            @Override
+            public void close(final boolean isFinalize) {
+                release(key, isFinalize);
+            }
+        });
         cacheEntry.referenceCount.incrementAndGet();
-        return cacheEntry.context;
+        return cacheEntry.namingStore;
     }
 
-    public void release(final Object connectionHash) {
-        this.release(connectionHash, false);
-    }
-
-    public synchronized void release(final Object connectionHash, final boolean async) {
+    public synchronized void release(final CacheKey connectionHash, final boolean async) {
         final CacheEntry cacheEntry = cache.get(connectionHash);
         if (cacheEntry.referenceCount.decrementAndGet() == 0) {
             try {
@@ -116,69 +99,14 @@ public class ContextCache {
         }
     }
 
-    private class ConnectionWrapper implements Connection {
-        private final CacheKey connectionHash;
-        private final Connection delegate;
-
-        private ConnectionWrapper(final CacheKey connectionHash, final Connection delegate) {
-            this.delegate = delegate;
-            this.connectionHash = connectionHash;
-        }
-
-        public Collection<Principal> getPrincipals() {
-            return delegate.getPrincipals();
-        }
-
-        @Override
-        public UserInfo getUserInfo() {
-            return delegate.getUserInfo();
-        }
-
-        public IoFuture<Channel> openChannel(final String s, final OptionMap optionMap) {
-            return delegate.openChannel(s, optionMap);
-        }
-
-        public String getRemoteEndpointName() {
-            return delegate.getRemoteEndpointName();
-        }
-
-        public Endpoint getEndpoint() {
-            return delegate.getEndpoint();
-        }
-
-        public void close() throws IOException {
-            ContextCache.this.release(connectionHash);
-        }
-
-        public void awaitClosed() throws InterruptedException {
-            delegate.awaitClosed();
-        }
-
-        public void awaitClosedUninterruptibly() {
-            delegate.awaitClosedUninterruptibly();
-        }
-
-        public void closeAsync() {
-            ContextCache.this.release(connectionHash, true);
-        }
-
-        public Key addCloseHandler(CloseHandler<? super Connection> closeHandler) {
-            return delegate.addCloseHandler(closeHandler);
-        }
-
-        public Attachments getAttachments() {
-            return delegate.getAttachments();
-        }
-    }
-
     private class CacheEntry {
         private final AtomicInteger referenceCount = new AtomicInteger(0);
         private final Connection connection;
-        private final Context context;
+        private final RemoteNamingStore namingStore;
 
-        private CacheEntry(final Connection connection, final Context context) {
+        private CacheEntry(final Connection connection, final RemoteNamingStore namingStore) {
             this.connection = connection;
-            this.context = context;
+            this.namingStore = namingStore;
         }
     }
 

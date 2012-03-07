@@ -30,6 +30,7 @@ import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+
 import javax.naming.Binding;
 import javax.naming.Context;
 import javax.naming.InvalidNameException;
@@ -37,13 +38,17 @@ import javax.naming.Name;
 import javax.naming.NameClassPair;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
+
 import org.jboss.marshalling.Marshaller;
 import org.jboss.marshalling.Unmarshaller;
-import static org.jboss.naming.remote.client.ClientUtil.namingException;
 import org.jboss.naming.remote.client.RemoteContext;
-import org.jboss.naming.remote.server.RemoteNamingService;
 import org.jboss.naming.remote.client.RemoteNamingStore;
 import org.jboss.naming.remote.protocol.ProtocolCommand;
+import org.jboss.naming.remote.server.RemoteNamingService;
+import org.jboss.remoting3.Channel;
+import org.xnio.IoFuture;
+
+import static org.jboss.naming.remote.client.ClientUtil.namingException;
 import static org.jboss.naming.remote.protocol.v1.Constants.BINDING;
 import static org.jboss.naming.remote.protocol.v1.Constants.CONTEXT;
 import static org.jboss.naming.remote.protocol.v1.Constants.NAME;
@@ -54,8 +59,6 @@ import static org.jboss.naming.remote.protocol.v1.WriteUtil.prepareForMarshallin
 import static org.jboss.naming.remote.protocol.v1.WriteUtil.write;
 import static org.jboss.naming.remote.protocol.v1.WriteUtil.writeExceptionResponse;
 import static org.jboss.naming.remote.protocol.v1.WriteUtil.writeResponse;
-import org.jboss.remoting3.Channel;
-import org.xnio.IoFuture;
 
 /**
  * @author John Bailey

@@ -25,24 +25,27 @@ import java.io.DataInputStream;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.util.List;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
+
 import javax.naming.Binding;
 import javax.naming.Context;
 import javax.naming.Name;
 import javax.naming.NameClassPair;
 import javax.naming.NamingException;
+
 import org.jboss.logging.Logger;
-import static org.jboss.naming.remote.client.ClientUtil.namingException;
 import org.jboss.naming.remote.client.RemoteNamingStore;
 import org.jboss.naming.remote.protocol.ProtocolCommand;
-import static org.jboss.naming.remote.protocol.v1.WriteUtil.write;
 import org.jboss.remoting3.Channel;
+import org.jboss.remoting3.Connection;
 import org.jboss.remoting3.MessageInputStream;
 import org.xnio.IoUtils;
+
+import static org.jboss.naming.remote.client.ClientUtil.namingException;
+import static org.jboss.naming.remote.protocol.v1.WriteUtil.write;
 
 /**
  * @author John Bailey
@@ -166,6 +169,11 @@ public class RemoteNamingStoreV1 implements RemoteNamingStore {
         } catch (IOException e) {
             throw namingException("Failed to close remote naming store", e);
         }
+    }
+
+    @Override
+    public Connection getConnection() {
+        return channel.getConnection();
     }
 
     private class MessageReceiver implements Channel.Receiver {

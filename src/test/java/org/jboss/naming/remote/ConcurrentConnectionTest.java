@@ -18,6 +18,7 @@ import org.jboss.remoting3.remote.RemoteConnectionProviderFactory;
 import org.jboss.remoting3.spi.NetworkServerProvider;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.xnio.OptionMap;
 import org.xnio.Xnio;
@@ -52,13 +53,18 @@ public class ConcurrentConnectionTest {
     public static void afterClass() throws Exception {
         server.stop();
     }
+
     @Test
-    public void multiThreadedStressTest() throws NamingException{
+    @Ignore("Needs a jboss-remoting update, due to an issue where the same " +
+            "message ID could be allocated and used when multiple threads attempt to send a message" +
+            "at once")
+    public void multiThreadedStressTest() throws NamingException {
         ExecutorService executorService = Executors.newFixedThreadPool(10);
         localContext.bind("test", "TestValue");
         try {
-            final Future[] futures = new Future[1000];
-            for (int i = 0; i < 1000; ++i) {
+            final int NUM_CALLS = 100;
+            final Future[] futures = new Future[NUM_CALLS];
+            for (int i = 0; i < NUM_CALLS; ++i) {
                 futures[i] = executorService.submit(new Runnable() {
                     @Override
                     public void run() {
@@ -76,7 +82,7 @@ public class ConcurrentConnectionTest {
                     }
                 });
             }
-            for(int i = 0; i < 1000; ++i) {
+            for (int i = 0; i < NUM_CALLS; ++i) {
                 try {
                     futures[i].get();
                 } catch (Exception e) {
@@ -85,6 +91,25 @@ public class ConcurrentConnectionTest {
             }
         } finally {
             executorService.shutdownNow();
+            localContext.unbind("test");
+        }
+    }
+
+
+    @Test
+    public void testCreateCloseSequential() throws NamingException {
+        localContext.bind("test", "TestValue");
+        try {
+            for (int i = 0; i < 100; ++i) {
+                Properties env = new Properties();
+                env.put(Context.INITIAL_CONTEXT_FACTORY, org.jboss.naming.remote.client.InitialContextFactory.class.getName());
+                env.put(Context.PROVIDER_URL, "remote://localhost:7999");
+                env.put("jboss.naming.client.ejb.context", "false");
+                InitialContext context = new InitialContext(env);
+                assertEquals("TestValue", context.lookup("test"));
+                context.close();
+            }
+        } finally {
             localContext.unbind("test");
         }
     }

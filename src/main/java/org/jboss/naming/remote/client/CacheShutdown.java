@@ -1,4 +1,4 @@
-package org.jboss.naming.remote.client.cache;
+package org.jboss.naming.remote.client;
 
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -11,10 +11,10 @@ import java.security.PrivilegedAction;
 public class CacheShutdown implements Runnable {
 
     private final EndpointCache endpointCache;
-    private final ContextCache contextCache;
+    private final NamingStoreCache contextCache;
 
 
-    public CacheShutdown(final ContextCache contextCache, final EndpointCache endpointCache) {
+    public CacheShutdown(final NamingStoreCache contextCache, final EndpointCache endpointCache) {
         this.contextCache = contextCache;
         this.endpointCache = endpointCache;
     }

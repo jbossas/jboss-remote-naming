@@ -39,6 +39,7 @@ import static org.jboss.naming.remote.client.ClientUtil.isEmpty;
 import static org.jboss.naming.remote.client.ClientUtil.namingEnumeration;
 
 /**
+ *
  * @author John Bailey
  */
 public class RemoteContext implements Context, NameParser {
@@ -47,6 +48,7 @@ public class RemoteContext implements Context, NameParser {
     private final Name prefix;
     private final Hashtable<String, Object> environment;
     private final RemoteNamingStore namingStore;
+
     private final List<CloseTask> closeTasks;
 
     private final AtomicBoolean closed = new AtomicBoolean();

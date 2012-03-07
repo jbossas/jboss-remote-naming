@@ -1,4 +1,4 @@
-package org.jboss.naming.remote.client.cache;
+package org.jboss.naming.remote.client;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -43,15 +43,11 @@ public class EndpointCache {
         if (cacheEntry == null) {
             final Endpoint endpoint = Remoting.createEndpoint(endpointName, endPointCreationOptions);
             endpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), remoteConnectionProviderOptions);
-            cacheEntry = new CacheEntry(endpoint);
+            cacheEntry = new CacheEntry(endpoint, new EndpointWrapper(endpointHash, endpoint));
             cache.putIfAbsent(endpointHash, cacheEntry);
         }
         cacheEntry.referenceCount.incrementAndGet();
-        return new EndpointWrapper(endpointHash, cacheEntry.endpoint);
-    }
-
-    public void release(final CacheKey connectionHash) {
-        this.release(connectionHash, false);
+        return cacheEntry.endpointWrapper;
     }
 
     public synchronized void release(final CacheKey endpointHash, final boolean async) {
@@ -178,7 +174,7 @@ public class EndpointCache {
         }
 
         public void close() throws IOException {
-            EndpointCache.this.release(endpointHash);
+            EndpointCache.this.release(endpointHash, false);
         }
 
         public void awaitClosed() throws InterruptedException {
@@ -205,9 +201,11 @@ public class EndpointCache {
     private static  class CacheEntry {
         private final AtomicInteger referenceCount = new AtomicInteger(0);
         private final Endpoint endpoint;
+        private final EndpointWrapper endpointWrapper;
 
-        private CacheEntry(final Endpoint endpoint) {
+        private CacheEntry(final Endpoint endpoint, final EndpointWrapper endpointWrapper) {
             this.endpoint = endpoint;
+            this.endpointWrapper = endpointWrapper;
         }
     }
 

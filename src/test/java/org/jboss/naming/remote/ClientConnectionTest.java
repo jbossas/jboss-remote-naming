@@ -42,7 +42,7 @@ import org.jboss.ejb.client.ContextSelector;
 import org.jboss.ejb.client.EJBClientContext;
 import org.jboss.naming.remote.client.InitialContextFactory;
 import org.jboss.naming.remote.client.RemoteContext;
-import org.jboss.naming.remote.client.ejb.EjbClientContextSelector;
+import org.jboss.naming.remote.client.ejb.RemoteNamingEjbClientContextSelector;
 import org.jboss.naming.remote.protocol.IoFutureHelper;
 import org.jboss.naming.remote.server.RemoteNamingService;
 import org.jboss.remoting3.Connection;
@@ -418,10 +418,8 @@ public class ClientConnectionTest {
         final Context context = new InitialContext(env);
 
         final ContextSelector<EJBClientContext> newSelector = EJBClientContext.setSelector(new MockSelector());
-        assertTrue(newSelector instanceof EjbClientContextSelector);
+        assertTrue(newSelector instanceof RemoteNamingEjbClientContextSelector);
         context.close();
-        assertEquals(temp, EJBClientContext.setSelector(original));
-        endpoint.close();
     }
 
 

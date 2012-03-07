@@ -26,10 +26,11 @@ import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.concurrent.Executor;
+
 import javax.naming.Context;
+
 import org.jboss.logging.Logger;
 import org.jboss.naming.remote.Constants;
-import static org.jboss.naming.remote.Constants.NAMING;
 import org.jboss.naming.remote.protocol.CancellableDataOutputStream;
 import org.jboss.naming.remote.protocol.Versions;
 import org.jboss.remoting3.Channel;
@@ -40,6 +41,8 @@ import org.jboss.remoting3.OpenListener;
 import org.jboss.remoting3.Registration;
 import org.xnio.IoUtils;
 import org.xnio.OptionMap;
+
+import static org.jboss.naming.remote.Constants.NAMING;
 
 /**
  * @author John Bailey

@@ -29,6 +29,8 @@ import javax.naming.Name;
 import javax.naming.NameClassPair;
 import javax.naming.NamingException;
 
+import org.jboss.remoting3.Connection;
+
 /**
  * @author John Bailey
  */
@@ -44,4 +46,5 @@ public interface RemoteNamingStore {
     void destroySubcontext(Name name) throws NamingException;
     Object lookupLink(final Name name) throws NamingException;
     void close() throws NamingException;
+    Connection getConnection();
 }

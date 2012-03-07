@@ -37,7 +37,7 @@ import static org.jboss.naming.remote.protocol.v1.ReadUtil.prepareForUnMarshalli
  * @author John Bailey
  */
 abstract class BaseProtocolCommand<T> implements ProtocolCommand<T> {
-    public static final int DEFAULT_TIMEOUT = 60;
+    public static final int DEFAULT_TIMEOUT = 10;
 
     private int nextCorrelationId = 1;
     private final Map<Integer, ProtocolIoFuture> requests = new HashMap<Integer, ProtocolIoFuture>();
