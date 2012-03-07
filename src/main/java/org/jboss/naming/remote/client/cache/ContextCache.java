@@ -43,7 +43,6 @@ public class ContextCache {
      * and cached for the passed connection properties, then the cached channel will be returned. Else a new
      * connection and channel will be created and that new channel returned.
      *
-     *
      * @param clientEndpoint                 The {@link org.jboss.remoting3.Endpoint} that will be used to open a connection
      * @param connectionURI                  The connection URI
      * @param connectOptions                 The options to be used for connection creation
@@ -60,33 +59,28 @@ public class ContextCache {
         final CacheKey key = new CacheKey(clientEndpoint, callbackHandler.getClass(), connectOptions, connectionURI);
         CacheEntry cacheEntry = cache.get(key);
         if (cacheEntry == null) {
-            synchronized (this) {
-                cacheEntry = cache.get(key);
-                if (cacheEntry == null) {
-                    final IoFuture<Connection> futureConnection = clientEndpoint.connect(connectionURI, connectOptions, callbackHandler);
-                    final Connection connection = IoFutureHelper.get(futureConnection, connectionTimeout, TimeUnit.MILLISECONDS);
-                    // open a channel
-                    final IoFuture<Channel> futureChannel = connection.openChannel("naming", channelCreationOptions);
-                    final Channel channel = IoFutureHelper.get(futureChannel, channelCreationTimeoutInMillis, TimeUnit.MILLISECONDS);
-                    final Context context = ChannelSetup.createContext(channel, env, closeTasks);
-                    cacheEntry = new CacheEntry(new ConnectionWrapper(key, connection), context);
-                    cache.put(key, cacheEntry);
-                    closeTasks.add(new RemoteContext.CloseTask() {
-                        @Override
-                        public void close(final boolean isFinalize) {
-                            try {
-                                if(isFinalize) {
-                                    connection.closeAsync();
-                                } else {
-                                    connection.close();
-                                }
-                            } catch (IOException e) {
-                                logger.error("Exception closing connection", e);
-                            }
+            final IoFuture<Connection> futureConnection = clientEndpoint.connect(connectionURI, connectOptions, callbackHandler);
+            final Connection connection = IoFutureHelper.get(futureConnection, connectionTimeout, TimeUnit.MILLISECONDS);
+            // open a channel
+            final IoFuture<Channel> futureChannel = connection.openChannel("naming", channelCreationOptions);
+            final Channel channel = IoFutureHelper.get(futureChannel, channelCreationTimeoutInMillis, TimeUnit.MILLISECONDS);
+            final Context context = ChannelSetup.createContext(channel, env, closeTasks);
+            cacheEntry = new CacheEntry(new ConnectionWrapper(key, connection), context);
+            cache.put(key, cacheEntry);
+            closeTasks.add(new RemoteContext.CloseTask() {
+                @Override
+                public void close(final boolean isFinalize) {
+                    try {
+                        if (isFinalize) {
+                            connection.closeAsync();
+                        } else {
+                            connection.close();
                         }
-                    });
+                    } catch (IOException e) {
+                        logger.error("Exception closing connection", e);
+                    }
                 }
-            }
+            });
         }
         cacheEntry.referenceCount.incrementAndGet();
         return cacheEntry.context;

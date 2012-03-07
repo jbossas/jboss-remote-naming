@@ -43,12 +43,11 @@ public class EndpointCache {
         if (cacheEntry == null) {
             final Endpoint endpoint = Remoting.createEndpoint(endpointName, endPointCreationOptions);
             endpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), remoteConnectionProviderOptions);
-            cacheEntry = new CacheEntry(new EndpointWrapper(endpointHash, endpoint));
-
+            cacheEntry = new CacheEntry(endpoint);
             cache.putIfAbsent(endpointHash, cacheEntry);
         }
         cacheEntry.referenceCount.incrementAndGet();
-        return cacheEntry.endpoint;
+        return new EndpointWrapper(endpointHash, cacheEntry.endpoint);
     }
 
     public void release(final CacheKey connectionHash) {
@@ -205,7 +204,7 @@ public class EndpointCache {
 
     private static  class CacheEntry {
         private final AtomicInteger referenceCount = new AtomicInteger(0);
-        private volatile Endpoint endpoint;
+        private final Endpoint endpoint;
 
         private CacheEntry(final Endpoint endpoint) {
             this.endpoint = endpoint;

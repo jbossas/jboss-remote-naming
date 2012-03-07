@@ -3,11 +3,9 @@ package org.jboss.naming.remote;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.Properties;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeoutException;
 
 import javax.naming.Context;
 import javax.naming.InitialContext;
@@ -55,7 +53,7 @@ public class ConcurrentConnectionTest {
         server.stop();
     }
     @Test
-    public void multiThreadedStressTest() throws NamingException, ExecutionException, InterruptedException, TimeoutException {
+    public void multiThreadedStressTest() throws NamingException{
         ExecutorService executorService = Executors.newFixedThreadPool(10);
         localContext.bind("test", "TestValue");
         try {
@@ -79,7 +77,11 @@ public class ConcurrentConnectionTest {
                 });
             }
             for(int i = 0; i < 1000; ++i) {
-                futures[i].get();
+                try {
+                    futures[i].get();
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed on invocation " + i, e);
+                }
             }
         } finally {
             executorService.shutdownNow();
