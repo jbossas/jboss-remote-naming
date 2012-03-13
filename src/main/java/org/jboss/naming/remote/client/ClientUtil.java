@@ -22,18 +22,34 @@
 
 package org.jboss.naming.remote.client;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.Iterator;
 import javax.naming.Name;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
 
+import org.jboss.naming.remote.protocol.NamingIOException;
+
 /**
  * @author John Bailey
  */
 public class ClientUtil {
+
+    /**
+     * Creates an initializes a naming exception. If the cause is an {@link IOException} then a
+     * {@link NamingIOException} is created instead.
+     * @param message The exception message
+     * @param cause The exception cause
+     * @return The naming exception
+     */
     public static NamingException namingException(final String message, final Throwable cause) {
-        final NamingException namingException = new NamingException(message);
+        final NamingException namingException;
+        if(cause instanceof IOException) {
+            namingException = new NamingIOException(message);
+        } else {
+            namingException = new NamingException(message);
+        }
         namingException.setRootCause(cause);
         return namingException;
     }

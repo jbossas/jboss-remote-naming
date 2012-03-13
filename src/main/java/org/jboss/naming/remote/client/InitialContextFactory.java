@@ -25,7 +25,6 @@ package org.jboss.naming.remote.client;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
-import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -162,8 +161,7 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         if (connectionUrl == null || connectionUrl.trim().isEmpty()) {
             throw new NamingException("No provider URL configured for connection");
         }
-        final URI connectionURI = new URI(connectionUrl);
-        return NAMING_STORE_CACHE.getRemoteNamingStore(clientEndpoint, connectionURI, connectOptions, callbackHandler, connectionTimeout, channelCreationOptions, channelCreationTimeoutInMillis, env, closeTasks);
+        return NAMING_STORE_CACHE.getRemoteNamingStore(clientEndpoint, connectionUrl, connectOptions, callbackHandler, connectionTimeout, channelCreationOptions, channelCreationTimeoutInMillis, closeTasks);
     }
 
     private Endpoint getOrCreateEndpoint(final Hashtable<String, Object> env, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks) throws IOException {

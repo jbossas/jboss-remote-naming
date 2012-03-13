@@ -3,7 +3,8 @@ package org.jboss.naming.remote.client;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
-import java.util.Hashtable;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,7 +38,7 @@ public class NamingStoreCache {
      * connection and channel will be created and that new channel returned.
      *
      * @param clientEndpoint                 The {@link org.jboss.remoting3.Endpoint} that will be used to open a connection
-     * @param connectionURI                  The connection URI
+     * @param connectionURL                  The connection URL
      * @param connectOptions                 The options to be used for connection creation
      * @param callbackHandler                The callback handler to be used for connection creation
      * @param connectionTimeout              The connection timeout in milli seconds that will be used while creating a connection
@@ -47,19 +48,32 @@ public class NamingStoreCache {
      * @return
      * @throws IOException
      */
-    public synchronized RemoteNamingStore getRemoteNamingStore(final Endpoint clientEndpoint, final URI connectionURI, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout,
-                                                               final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final Hashtable<String, Object> env, final List<RemoteContext.CloseTask> contextCloseTasks) throws IOException, NamingException {
-        final CacheKey key = new CacheKey(clientEndpoint, callbackHandler.getClass(), connectOptions, connectionURI);
+    public synchronized RemoteNamingStore getRemoteNamingStore(final Endpoint clientEndpoint, final String connectionURL, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout,
+                                                               final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final List<RemoteContext.CloseTask> contextCloseTasks) throws IOException, NamingException, URISyntaxException {
+        final CacheKey key = new CacheKey(clientEndpoint, callbackHandler.getClass(), connectOptions, connectionURL);
         CacheEntry cacheEntry = cache.get(key);
+        Connection connection = null;
         if (cacheEntry == null) {
-            final IoFuture<Connection> futureConnection = clientEndpoint.connect(connectionURI, connectOptions, callbackHandler);
-            final Connection connection = IoFutureHelper.get(futureConnection, connectionTimeout, TimeUnit.MILLISECONDS);
-            // open a channel
-            final IoFuture<Channel> futureChannel = connection.openChannel("naming", channelCreationOptions);
-            final Channel channel = IoFutureHelper.get(futureChannel, channelCreationTimeoutInMillis, TimeUnit.MILLISECONDS);
-            final RemoteNamingStore store = RemoteContextFactory.createVersionedStore(channel);
+            RemoteNamingStore store;
+            if (connectionURL.contains(",")) {
+                //HA context
+                String[] urls = connectionURL.split(",");
+                List<URI> connectionUris = new ArrayList<URI>(urls.length);
+                for (final String url : urls) {
+                    connectionUris.add(new URI(url));
+                }
+                store = new HaRemoteNamingStore(channelCreationTimeoutInMillis, channelCreationOptions, connectionTimeout, callbackHandler, connectOptions, connectionUris, clientEndpoint, true);
+            } else {
+                final IoFuture<Connection> futureConnection = clientEndpoint.connect(new URI(connectionURL), connectOptions, callbackHandler);
+                connection = IoFutureHelper.get(futureConnection, connectionTimeout, TimeUnit.MILLISECONDS);
+                // open a channel
+                final IoFuture<Channel> futureChannel = connection.openChannel("naming", channelCreationOptions);
+                final Channel channel = IoFutureHelper.get(futureChannel, channelCreationTimeoutInMillis, TimeUnit.MILLISECONDS);
+                store = RemoteContextFactory.createVersionedStore(channel);
+            }
             cacheEntry = new CacheEntry(connection, store);
             cache.put(key, cacheEntry);
+
         }
 
         //when the context is closed we need to release and decrease the reference count
@@ -77,18 +91,28 @@ public class NamingStoreCache {
         final CacheEntry cacheEntry = cache.get(connectionHash);
         if (cacheEntry.referenceCount.decrementAndGet() == 0) {
             try {
-                if (async) {
-                    cacheEntry.connection.closeAsync();
-                } else {
+                cacheEntry.namingStore.close();
+            } catch (NamingException e) {
+                throw new RuntimeException("Failed to close naming store", e);
+            } finally {
+                try {
+                    if (cacheEntry.connection != null) {
+                        if (async) {
+                            cacheEntry.connection.closeAsync();
+                        } else {
+                            try {
+                                cacheEntry.connection.close();
+                            } catch (IOException e) {
+                                throw new RuntimeException("Failed to close connection", e);
+                            }
+                        }
+                    }
+                } finally {
                     try {
-                        cacheEntry.connection.close();
-                    } catch (IOException e) {
-                        throw new RuntimeException("Failed to close connection", e);
+                    } finally {
+                        cache.remove(connectionHash);
                     }
                 }
-
-            } finally {
-                cache.remove(connectionHash);
             }
         }
     }
@@ -112,11 +136,11 @@ public class NamingStoreCache {
 
     private static final class CacheKey {
         final Endpoint endpoint;
-        final URI destination;
+        final String destination;
         final OptionMap connectOptions;
         final Class<?> callbackHandlerClass;
 
-        private CacheKey(final Endpoint endpoint, final Class<?> callbackHandlerClass, final OptionMap connectOptions, final URI destination) {
+        private CacheKey(final Endpoint endpoint, final Class<?> callbackHandlerClass, final OptionMap connectOptions, final String destination) {
             this.endpoint = endpoint;
             this.callbackHandlerClass = callbackHandlerClass;
             this.connectOptions = connectOptions;
