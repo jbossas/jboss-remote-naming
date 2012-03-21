@@ -23,13 +23,12 @@
 package org.jboss.naming.remote.client;
 
 import java.util.List;
+
 import javax.naming.Binding;
 import javax.naming.Context;
 import javax.naming.Name;
 import javax.naming.NameClassPair;
 import javax.naming.NamingException;
-
-import org.jboss.remoting3.Connection;
 
 /**
  * @author John Bailey
@@ -46,5 +45,6 @@ public interface RemoteNamingStore {
     void destroySubcontext(Name name) throws NamingException;
     Object lookupLink(final Name name) throws NamingException;
     void close() throws NamingException;
-    Connection getConnection();
+    void addEjbContext(CurrentEjbClientConnection connection);
+    void removeEjbContext(CurrentEjbClientConnection connection);
 }

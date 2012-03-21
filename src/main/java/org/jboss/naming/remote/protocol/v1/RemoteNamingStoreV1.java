@@ -37,10 +37,10 @@ import javax.naming.NameClassPair;
 import javax.naming.NamingException;
 
 import org.jboss.logging.Logger;
+import org.jboss.naming.remote.client.CurrentEjbClientConnection;
 import org.jboss.naming.remote.client.RemoteNamingStore;
 import org.jboss.naming.remote.protocol.ProtocolCommand;
 import org.jboss.remoting3.Channel;
-import org.jboss.remoting3.Connection;
 import org.jboss.remoting3.MessageInputStream;
 import org.xnio.IoUtils;
 
@@ -172,8 +172,13 @@ public class RemoteNamingStoreV1 implements RemoteNamingStore {
     }
 
     @Override
-    public Connection getConnection() {
-        return channel.getConnection();
+    public void addEjbContext(final CurrentEjbClientConnection connection) {
+        connection.setConnection(channel.getConnection());
+    }
+
+    @Override
+    public void removeEjbContext(final CurrentEjbClientConnection connection) {
+
     }
 
     private class MessageReceiver implements Channel.Receiver {

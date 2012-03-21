@@ -2,8 +2,10 @@ package org.jboss.naming.remote.client;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import javax.naming.Binding;
@@ -46,7 +48,12 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
      */
     private volatile int nextServer;
     private volatile RemoteNamingStore currentNamingStore;
-    //should only be accessed under lock, we only hold onto this to make sure we close it properly
+    /**
+     * The list of client contexts that are using this naming stores connection.
+     *
+     */
+    private final Set<CurrentEjbClientConnection> currentEjbClientContexts = new HashSet<CurrentEjbClientConnection>();
+    //should only be accessed under lock
     private Connection connection;
 
     public HaRemoteNamingStore(final long channelCreationTimeoutInMillis, final OptionMap channelCreationOptions, final long connectionTimeout, final CallbackHandler callbackHandler, final OptionMap connectOptions, final List<URI> connectionURIs, final Endpoint clientEndpoint, final boolean connectInOrder) {
@@ -166,6 +173,9 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
             throw new NamingException("Failed to connect to any server. Servers tried: " + connectionURIs);
         }
         this.currentNamingStore = store;
+        for(final CurrentEjbClientConnection currentEjbClientContext : currentEjbClientContexts) {
+            currentEjbClientContext.setConnection(connection);
+        }
         return store;
     }
 
@@ -310,10 +320,12 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
     }
 
     @Override
-    public void close() throws NamingException {
+    public synchronized void close() throws NamingException {
         closed = true;
         try {
-            connection.close();
+            if(connection != null) {
+                connection.close();
+            }
         } catch (IOException e) {
             NamingException exception = new NamingException("Failed to close connection");
             exception.initCause(e);
@@ -321,17 +333,17 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
         }
     }
 
-    /**
-     * We don't support this ATM. It is only used for setting up the EJB client context while is not really applicably
-     * for HA JNDI.
-     * <p/>
-     * TODO: think about how we should actually support this.
-     *
-     * @return
-     */
     @Override
-    public synchronized Connection getConnection() {
-        throw new IllegalStateException("Not Implemented");
+    public synchronized void addEjbContext(final CurrentEjbClientConnection connection) {
+        if(this.connection != null) {
+            connection.setConnection(this.connection);
+        }
+        this.currentEjbClientContexts.add(connection);
+    }
+
+    @Override
+    public synchronized void removeEjbContext(final CurrentEjbClientConnection connection) {
+        this.currentEjbClientContexts.remove(connection);
     }
 
     /**

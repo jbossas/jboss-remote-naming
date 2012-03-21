@@ -92,8 +92,34 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
 
     private static final CacheShutdown CACHE_SHUTDOWN = new CacheShutdown(NAMING_STORE_CACHE, ENDPOINT_CACHE);
 
+    /**
+     * Cached class and methods used by the ejb client context integration. Will be null if the ejb client lib
+     * is not on the class path
+     */
+    private static final Class<?> selectorClass;
+    private static final Method clearMethod;
+    private static final Method setCurrentMethod;
+
+
     static {
         CACHE_SHUTDOWN.registerShutdownHandler();
+
+        final ClassLoader classLoader = InitialContextFactory.class.getClassLoader();
+        Class<?> sel = null;
+        Method setup = null;
+        Method clear = null;
+        Method setCurrent = null;
+        try {
+            sel = classLoader.loadClass("org.jboss.naming.remote.client.ejb.RemoteNamingEjbClientContextSelector");
+            setup = sel.getDeclaredMethod("setupSelector");
+            clear = sel.getDeclaredMethod("clearSelector");
+            setCurrent = sel.getDeclaredMethod("setCurrent", CurrentEjbClientConnection.class);
+        } catch (Exception e) {
+            logger.debugf("EJB client library is not on the class path, ejb client integration will not be available", e);
+        }
+        selectorClass = sel;
+        clearMethod = clear;
+        setCurrentMethod = setCurrent;
     }
 
     @SuppressWarnings("unchecked")
@@ -111,7 +137,7 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
                 setupEJBClientContext = Boolean.FALSE;
             }
             if (setupEJBClientContext) {
-                setupEjbContext(namingStore.getConnection(), closeTasks);
+                setupEjbContext(namingStore, closeTasks);
             }
             return new RemoteContext(namingStore, (Hashtable<String, Object>) env, closeTasks);
         } catch (NamingException e) {
@@ -406,10 +432,8 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
     /*
        Temporary hack to allow remote ejbs to share the remote connection used by naming.
     */
-    private static void setupEjbContext(final Connection connection, final List<RemoteContext.CloseTask> closeTasks) {
+    private static void setupEjbContext(final RemoteNamingStore namingStore, final List<RemoteContext.CloseTask> closeTasks) {
         try {
-            final ClassLoader classLoader = InitialContextFactory.class.getClassLoader();
-            final Class<?> selectorClass = classLoader.loadClass("org.jboss.naming.remote.client.ejb.RemoteNamingEjbClientContextSelector");
             //first do the static setup
             if (remoteContextSelector == null) {
                 synchronized (InitialContextFactory.class) {
@@ -419,14 +443,16 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
                     }
                 }
             }
-            final Method setup = selectorClass.getMethod("setCurrent", Connection.class);
-            setup.invoke(remoteContextSelector, connection);
+            //setup the context selector
+            final CurrentEjbClientConnection connection = new CurrentEjbClientConnection();
+            namingStore.addEjbContext(connection);
+            setCurrentMethod.invoke(remoteContextSelector, connection);
 
             closeTasks.add(new RemoteContext.CloseTask() {
                 public void close(final boolean isFinalize) {
                     try {
-                        final Method reset = selectorClass.getMethod("clearSelector");
-                        reset.invoke(remoteContextSelector);
+                        namingStore.removeEjbContext(connection);
+                        clearMethod.invoke(remoteContextSelector);
                     } catch (Throwable t) {
                         throw new RuntimeException("Failed to reset EJB remote context", t);
                     }
