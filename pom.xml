@@ -88,7 +88,6 @@
             <groupId>org.jboss.marshalling</groupId>
             <artifactId>jboss-marshalling-river</artifactId>
             <version>${version.org.jboss.marshalling}</version>
-            <scope>provided</scope>
         </dependency>
 
         <dependency>
