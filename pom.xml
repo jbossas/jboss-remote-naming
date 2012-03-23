@@ -113,7 +113,6 @@
             <groupId>org.jboss.sasl</groupId>
             <artifactId>jboss-sasl</artifactId>
             <version>${version.org.jboss.sasl}</version>
-            <scope>provided</scope>
         </dependency>
 
         <dependency>
