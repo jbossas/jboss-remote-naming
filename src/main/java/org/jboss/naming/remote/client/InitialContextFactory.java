@@ -81,6 +81,11 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
     public static final String PASSWORD_BASE64_KEY = "jboss.naming.client.security.password.base64";
     public static final String REALM_KEY = "jboss.naming.client.security.realm";
 
+    /**
+     * If this is set to true then a server will be picked at random to connect to, rather than using the first one in the list
+     */
+    private static final String RANDOM_SERVER = "jboss.naming.client.random.server";
+
     private static final OptionMap DEFAULT_ENDPOINT_CREATION_OPTIONS = OptionMap.create(Options.THREAD_DAEMON, true);
     private static final OptionMap DEFAULT_CONNECTION_CREATION_OPTIONS = OptionMap.create(Options.SASL_POLICY_NOANONYMOUS, false);
     private static final OptionMap DEFAULT_CONNECTION_PROVIDER_CREATION_OPTIONS = OptionMap.create(Options.SSL_ENABLED, false);
@@ -187,7 +192,8 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         if (connectionUrl == null || connectionUrl.trim().isEmpty()) {
             throw new NamingException("No provider URL configured for connection");
         }
-        return NAMING_STORE_CACHE.getRemoteNamingStore(clientEndpoint, connectionUrl, connectOptions, callbackHandler, connectionTimeout, channelCreationOptions, channelCreationTimeoutInMillis, closeTasks);
+        boolean randomServer = Boolean.getBoolean(RANDOM_SERVER);
+        return NAMING_STORE_CACHE.getRemoteNamingStore(clientEndpoint, connectionUrl, connectOptions, callbackHandler, connectionTimeout, channelCreationOptions, channelCreationTimeoutInMillis, closeTasks, randomServer);
     }
 
     private Endpoint getOrCreateEndpoint(final Hashtable<String, Object> env, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks) throws IOException {

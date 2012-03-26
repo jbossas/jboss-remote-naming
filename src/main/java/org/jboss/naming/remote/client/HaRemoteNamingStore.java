@@ -56,7 +56,7 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
     //should only be accessed under lock
     private Connection connection;
 
-    public HaRemoteNamingStore(final long channelCreationTimeoutInMillis, final OptionMap channelCreationOptions, final long connectionTimeout, final CallbackHandler callbackHandler, final OptionMap connectOptions, final List<URI> connectionURIs, final Endpoint clientEndpoint, final boolean connectInOrder) {
+    public HaRemoteNamingStore(final long channelCreationTimeoutInMillis, final OptionMap channelCreationOptions, final long connectionTimeout, final CallbackHandler callbackHandler, final OptionMap connectOptions, final List<URI> connectionURIs, final Endpoint clientEndpoint, final boolean randomServer) {
         if (connectionURIs.isEmpty()) {
             throw new IllegalArgumentException("Cannot create a HA remote naming store without any servers to connect to");
         }
@@ -67,10 +67,10 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
         this.connectOptions = connectOptions;
         this.connectionURIs = connectionURIs;
         this.clientEndpoint = clientEndpoint;
-        if (connectInOrder) {
-            nextServer = 0;
-        } else {
+        if (randomServer) {
             nextServer = new Random().nextInt(connectionURIs.size());
+        } else {
+            nextServer = 0;
         }
     }
 

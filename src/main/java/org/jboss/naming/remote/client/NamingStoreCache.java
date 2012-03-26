@@ -49,7 +49,7 @@ public class NamingStoreCache {
      * @throws IOException
      */
     public synchronized RemoteNamingStore getRemoteNamingStore(final Endpoint clientEndpoint, final String connectionURL, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout,
-                                                               final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final List<RemoteContext.CloseTask> contextCloseTasks) throws IOException, NamingException, URISyntaxException {
+                                                               final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final List<RemoteContext.CloseTask> contextCloseTasks, boolean randomServer) throws IOException, NamingException, URISyntaxException {
         final CacheKey key = new CacheKey(clientEndpoint, callbackHandler.getClass(), connectOptions, connectionURL);
         CacheEntry cacheEntry = cache.get(key);
         Connection connection = null;
@@ -62,7 +62,7 @@ public class NamingStoreCache {
                 for (final String url : urls) {
                     connectionUris.add(new URI(url));
                 }
-                store = new HaRemoteNamingStore(channelCreationTimeoutInMillis, channelCreationOptions, connectionTimeout, callbackHandler, connectOptions, connectionUris, clientEndpoint, true);
+                store = new HaRemoteNamingStore(channelCreationTimeoutInMillis, channelCreationOptions, connectionTimeout, callbackHandler, connectOptions, connectionUris, clientEndpoint, randomServer);
             } else {
                 final IoFuture<Connection> futureConnection = clientEndpoint.connect(new URI(connectionURL), connectOptions, callbackHandler);
                 connection = IoFutureHelper.get(futureConnection, connectionTimeout, TimeUnit.MILLISECONDS);
