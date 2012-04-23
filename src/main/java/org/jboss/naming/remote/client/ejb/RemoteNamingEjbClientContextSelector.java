@@ -1,13 +1,13 @@
 package org.jboss.naming.remote.client.ejb;
 
-import java.io.IOException;
-import java.util.IdentityHashMap;
-
 import org.jboss.ejb.client.ContextSelector;
 import org.jboss.ejb.client.EJBClientContext;
 import org.jboss.naming.remote.client.CurrentEjbClientConnection;
 import org.jboss.remoting3.CloseHandler;
 import org.jboss.remoting3.Connection;
+
+import java.io.IOException;
+import java.util.IdentityHashMap;
 
 /**
  * @author John Bailey
@@ -40,7 +40,11 @@ public class RemoteNamingEjbClientContextSelector implements ContextSelector<EJB
     }
 
     public EJBClientContext getCurrent() {
-        EJBClientContext local = getContext(currentContext.get().getConnection());
+        final CurrentEjbClientConnection currentEjbClientConnection = currentContext.get();
+        EJBClientContext local = null;
+        if(currentEjbClientConnection != null) {
+            local = getContext(currentEjbClientConnection.getConnection());
+        }
         if (local == null) {
             return delegate.getCurrent();
         } else {
