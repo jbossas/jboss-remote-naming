@@ -1,5 +1,15 @@
 package org.jboss.naming.remote.client;
 
+import org.jboss.logging.Logger;
+import org.jboss.naming.remote.protocol.IoFutureHelper;
+import org.jboss.remoting3.Channel;
+import org.jboss.remoting3.Connection;
+import org.jboss.remoting3.Endpoint;
+import org.xnio.IoFuture;
+import org.xnio.OptionMap;
+
+import javax.naming.NamingException;
+import javax.security.auth.callback.CallbackHandler;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
@@ -11,17 +21,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import javax.naming.NamingException;
-import javax.security.auth.callback.CallbackHandler;
-
-import org.jboss.logging.Logger;
-import org.jboss.naming.remote.protocol.IoFutureHelper;
-import org.jboss.remoting3.Channel;
-import org.jboss.remoting3.Connection;
-import org.jboss.remoting3.Endpoint;
-import org.xnio.IoFuture;
-import org.xnio.OptionMap;
 
 /**
  * @author John Bailey
@@ -60,11 +59,11 @@ public class NamingStoreCache {
                 String[] urls = connectionURL.split(",");
                 List<URI> connectionUris = new ArrayList<URI>(urls.length);
                 for (final String url : urls) {
-                    connectionUris.add(new URI(url));
+                    connectionUris.add(parseRemotingURI(url));
                 }
                 store = new HaRemoteNamingStore(channelCreationTimeoutInMillis, channelCreationOptions, connectionTimeout, callbackHandler, connectOptions, connectionUris, clientEndpoint, randomServer);
             } else {
-                final IoFuture<Connection> futureConnection = clientEndpoint.connect(new URI(connectionURL), connectOptions, callbackHandler);
+                final IoFuture<Connection> futureConnection = clientEndpoint.connect(parseRemotingURI(connectionURL), connectOptions, callbackHandler);
                 connection = IoFutureHelper.get(futureConnection, connectionTimeout, TimeUnit.MILLISECONDS);
                 // open a channel
                 final IoFuture<Channel> futureChannel = connection.openChannel("naming", channelCreationOptions);
@@ -182,5 +181,36 @@ public class NamingStoreCache {
         } catch (Throwable t) {
             logger.debug("Failed to close connection ", t);
         }
+    }
+
+    private static URI parseRemotingURI(final String uriString) throws URISyntaxException {
+        if (!uriString.startsWith("remote://")) {
+            // TODO: This project doesn't yet have i18n logging
+            throw new URISyntaxException(uriString, "Unrecognized URI protocol in URI");
+        }
+        if (uriString.length() == "remote://".length()) {
+            throw new URISyntaxException(uriString, "Unparsable URI");
+        }
+        final String uriWithoutProtocol = uriString.substring("remote://".length());
+        final int portStart = uriWithoutProtocol.lastIndexOf(":"); // the index where the "port" starts
+        if (portStart == -1 || portStart == uriWithoutProtocol.length() - 1) {
+            throw new URISyntaxException(uriString, "Unparsable URI");
+        }
+        final String host = uriWithoutProtocol.substring(0, portStart);
+        final String port = uriWithoutProtocol.substring(portStart + 1);
+        return new URI("remote://" + formatPossibleIpv6Address(host) + ":" + port);
+    }
+
+    private static String formatPossibleIpv6Address(String address) {
+        if (address == null) {
+            return address;
+        }
+        if (!address.contains(":")) {
+            return address;
+        }
+        if (address.startsWith("[") && address.endsWith("]")) {
+            return address;
+        }
+        return "[" + address + "]";
     }
 }
