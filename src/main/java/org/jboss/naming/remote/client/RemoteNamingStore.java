@@ -45,6 +45,7 @@ public interface RemoteNamingStore {
     void destroySubcontext(Name name) throws NamingException;
     Object lookupLink(final Name name) throws NamingException;
     void close() throws NamingException;
+    void closeAsync();
     void addEjbContext(CurrentEjbClientConnection connection);
     void removeEjbContext(CurrentEjbClientConnection connection);
 }
