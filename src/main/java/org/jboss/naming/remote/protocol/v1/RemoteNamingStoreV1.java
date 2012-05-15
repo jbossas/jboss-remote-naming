@@ -21,6 +21,19 @@
  */
 package org.jboss.naming.remote.protocol.v1;
 
+import org.jboss.logging.Logger;
+import org.jboss.naming.remote.client.CurrentEjbClientConnection;
+import org.jboss.naming.remote.client.RemoteNamingStore;
+import org.jboss.naming.remote.protocol.ProtocolCommand;
+import org.jboss.remoting3.Channel;
+import org.jboss.remoting3.MessageInputStream;
+import org.xnio.IoUtils;
+
+import javax.naming.Binding;
+import javax.naming.Context;
+import javax.naming.Name;
+import javax.naming.NameClassPair;
+import javax.naming.NamingException;
 import java.io.DataInputStream;
 import java.io.DataOutput;
 import java.io.IOException;
@@ -29,20 +42,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import javax.naming.Binding;
-import javax.naming.Context;
-import javax.naming.Name;
-import javax.naming.NameClassPair;
-import javax.naming.NamingException;
-
-import org.jboss.logging.Logger;
-import org.jboss.naming.remote.client.CurrentEjbClientConnection;
-import org.jboss.naming.remote.client.RemoteNamingStore;
-import org.jboss.naming.remote.protocol.ProtocolCommand;
-import org.jboss.remoting3.Channel;
-import org.jboss.remoting3.MessageInputStream;
-import org.xnio.IoUtils;
 
 import static org.jboss.naming.remote.client.ClientUtil.namingException;
 import static org.jboss.naming.remote.protocol.v1.WriteUtil.write;
@@ -169,6 +168,20 @@ public class RemoteNamingStoreV1 implements RemoteNamingStore {
         } catch (IOException e) {
             throw namingException("Failed to close remote naming store", e);
         }
+    }
+
+    @Override
+    public void closeAsync() {
+        // shutdown the executor service
+        try {
+            if (this.executor != null) {
+                this.executor.shutdown();
+            }
+        } catch (Exception e) {
+            // log and ignore
+            log.debug("Could not shutdown executor service", e);
+        }
+        channel.closeAsync();
     }
 
     @Override

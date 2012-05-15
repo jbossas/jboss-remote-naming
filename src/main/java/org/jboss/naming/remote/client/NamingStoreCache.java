@@ -1,13 +1,8 @@
 package org.jboss.naming.remote.client;
 
 import org.jboss.logging.Logger;
-import org.jboss.naming.remote.protocol.IoFutureHelper;
 import org.jboss.remoting3.Channel;
-import org.jboss.remoting3.CloseHandler;
-import org.jboss.remoting3.Connection;
 import org.jboss.remoting3.Endpoint;
-import org.jboss.remoting3.HandleableCloseable;
-import org.xnio.IoFuture;
 import org.xnio.OptionMap;
 
 import javax.naming.NamingException;
@@ -17,11 +12,11 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -53,7 +48,6 @@ public class NamingStoreCache {
                                                                final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final List<RemoteContext.CloseTask> contextCloseTasks, boolean randomServer) throws IOException, NamingException, URISyntaxException {
         final CacheKey key = new CacheKey(clientEndpoint, callbackHandler.getClass(), connectOptions, connectionURL);
         CacheEntry cacheEntry = cache.get(key);
-        Connection connection = null;
         if (cacheEntry == null) {
             RemoteNamingStore store;
             if (connectionURL.contains(",")) {
@@ -61,26 +55,15 @@ public class NamingStoreCache {
                 String[] urls = connectionURL.split(",");
                 List<URI> connectionUris = new ArrayList<URI>(urls.length);
                 for (final String url : urls) {
-                    connectionUris.add(new URI(url));
+                    connectionUris.add(new URI(url.trim()));
                 }
                 store = new HaRemoteNamingStore(channelCreationTimeoutInMillis, channelCreationOptions, connectionTimeout, callbackHandler, connectOptions, connectionUris, clientEndpoint, randomServer);
             } else {
-                final IoFuture<Connection> futureConnection = clientEndpoint.connect(new URI(connectionURL), connectOptions, callbackHandler);
-                connection = IoFutureHelper.get(futureConnection, connectionTimeout, TimeUnit.MILLISECONDS);
-                // We don't want to hold stale connection(s), so add a close handler which removes the entry
-                // from the cache when the connection is closed
-                connection.addCloseHandler(new CacheEntryRemovalHandler(key, false));
-                // open a channel
-                final IoFuture<Channel> futureChannel = connection.openChannel("naming", channelCreationOptions);
-                final Channel channel = IoFutureHelper.get(futureChannel, channelCreationTimeoutInMillis, TimeUnit.MILLISECONDS);
-                // We don't want to hold stale channel/connection, so add a close handler for the channel, which
-                // removes the cache entry when the channel is closed and also closes the connection associated
-                // with that channel
-                channel.addCloseHandler(new CacheEntryRemovalHandler(key, true));
-
-                store = RemoteContextFactory.createVersionedStore(channel);
+                store = new HaRemoteNamingStore(channelCreationTimeoutInMillis, channelCreationOptions, connectionTimeout,
+                        callbackHandler, connectOptions, Collections.singletonList(new URI(connectionURL.trim())),
+                        clientEndpoint, randomServer);
             }
-            cacheEntry = new CacheEntry(connection, store);
+            cacheEntry = new CacheEntry(store);
             cache.put(key, cacheEntry);
 
         }
@@ -103,45 +86,36 @@ public class NamingStoreCache {
         }
         if (cacheEntry.referenceCount.decrementAndGet() == 0) {
             try {
-                cacheEntry.namingStore.close();
+                if (async) {
+                    cacheEntry.namingStore.closeAsync();
+                } else {
+                    cacheEntry.namingStore.close();
+                }
             } catch (NamingException e) {
                 throw new RuntimeException("Failed to close naming store", e);
             } finally {
-                try {
-                    if (cacheEntry.connection != null) {
-                        if (async) {
-                            cacheEntry.connection.closeAsync();
-                        } else {
-                            try {
-                                cacheEntry.connection.close();
-                            } catch (IOException e) {
-                                throw new RuntimeException("Failed to close connection", e);
-                            }
-                        }
-                    }
-                } finally {
-                    try {
-                    } finally {
-                        cache.remove(connectionHash);
-                    }
-                }
+                cache.remove(connectionHash);
+
             }
         }
     }
 
     public synchronized void shutdown() {
         for (Map.Entry<CacheKey, CacheEntry> entry : cache.entrySet()) {
-            safeClose(entry.getValue().connection);
+            final RemoteNamingStore namingStore = entry.getValue().namingStore;
+            try {
+                namingStore.close();
+            } catch (Throwable t) {
+                logger.debug("Failed to close naming store ", t);
+            }
         }
     }
 
     private class CacheEntry {
         private final AtomicInteger referenceCount = new AtomicInteger(0);
-        private final Connection connection;
         private final RemoteNamingStore namingStore;
 
-        private CacheEntry(final Connection connection, final RemoteNamingStore namingStore) {
-            this.connection = connection;
+        private CacheEntry(final RemoteNamingStore namingStore) {
             this.namingStore = namingStore;
         }
     }
@@ -193,31 +167,6 @@ public class NamingStoreCache {
             closable.close();
         } catch (Throwable t) {
             logger.debug("Failed to close connection ", t);
-        }
-    }
-
-    /**
-     * A {@link CloseHandler} which removes a entry from the naming store cache. This close handler
-     * also optionally closes the {@link Connection} associated with the {@link CacheEntry}, if it is
-     * passed a value of <code>true</code> for the <code>closeConnection</code> parameter in its
-     * {@link #CacheEntryRemovalHandler(org.jboss.naming.remote.client.NamingStoreCache.CacheKey, boolean) constructor}
-     */
-    private class CacheEntryRemovalHandler implements CloseHandler<HandleableCloseable> {
-
-        private final boolean closeConnection;
-        private final CacheKey key;
-
-        CacheEntryRemovalHandler(final CacheKey key, final boolean closeConnection) {
-            this.key = key;
-            this.closeConnection = closeConnection;
-        }
-
-        @Override
-        public void handleClose(HandleableCloseable closable, IOException e) {
-            final CacheEntry cacheEntry = cache.remove(this.key);
-            if (cacheEntry != null && closeConnection) {
-                cacheEntry.connection.closeAsync();
-            }
         }
     }
 }

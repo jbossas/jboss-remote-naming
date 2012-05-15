@@ -1,20 +1,5 @@
 package org.jboss.naming.remote.client;
 
-import java.io.IOException;
-import java.net.URI;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Random;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
-
-import javax.naming.Binding;
-import javax.naming.Context;
-import javax.naming.Name;
-import javax.naming.NameClassPair;
-import javax.naming.NamingException;
-import javax.security.auth.callback.CallbackHandler;
-
 import org.jboss.logging.Logger;
 import org.jboss.naming.remote.protocol.IoFutureHelper;
 import org.jboss.naming.remote.protocol.NamingIOException;
@@ -24,8 +9,28 @@ import org.jboss.remoting3.Endpoint;
 import org.xnio.IoFuture;
 import org.xnio.OptionMap;
 
+import javax.naming.Binding;
+import javax.naming.Context;
+import javax.naming.Name;
+import javax.naming.NameClassPair;
+import javax.naming.NamingException;
+import javax.security.auth.callback.CallbackHandler;
+import java.io.IOException;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
 /**
- * Remote naming store that can handle connecting to multiple hosts.
+ * Remote naming store that has the ability to re-establish a connection to a destination server,
+ * if the connection breaks at some point in time. This remote naming store also has the ability
+ * to connect to multiple different destination hosts/servers. At a given time, the naming store will be
+ * connected to atmost one server and it will "failover" to the "next" server if the connection with the
+ * current server breaks.
  *
  * @author Stuart Douglas
  */
@@ -33,14 +38,7 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
 
     private static final Logger logger = Logger.getLogger(HaRemoteNamingStore.class);
 
-
-    private final Endpoint clientEndpoint;
-    private final List<URI> connectionURIs;
-    private final OptionMap connectOptions;
-    private final CallbackHandler callbackHandler;
-    private final long connectionTimeout;
-    private final OptionMap channelCreationOptions;
-    private final long channelCreationTimeoutInMillis;
+    private final List<RemoteNamingStoreConnectionInfo> namingStoreConnections;
 
     private volatile boolean closed = false;
     /**
@@ -50,25 +48,50 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
     private volatile RemoteNamingStore currentNamingStore;
     /**
      * The list of client contexts that are using this naming stores connection.
-     *
      */
     private final Set<CurrentEjbClientConnection> currentEjbClientContexts = new HashSet<CurrentEjbClientConnection>();
     //should only be accessed under lock
     private Connection connection;
 
+    /**
+     * @param channelCreationTimeoutInMillis The channel creation timeout in milli sec
+     * @param channelCreationOptions         The channel creation options
+     * @param connectionTimeout              The connection creation timeout in milli sec
+     * @param callbackHandler                The callback handler
+     * @param connectOptions                 The connection creation options
+     * @param connectionURIs                 The connection URIs
+     * @param clientEndpoint                 The client Endpoint
+     * @param randomServer                   True if a random connection URI has to be picked, from among the passed
+     *                                       <code>connectionURIs</code> for establishing the first connection
+     */
     public HaRemoteNamingStore(final long channelCreationTimeoutInMillis, final OptionMap channelCreationOptions, final long connectionTimeout, final CallbackHandler callbackHandler, final OptionMap connectOptions, final List<URI> connectionURIs, final Endpoint clientEndpoint, final boolean randomServer) {
         if (connectionURIs.isEmpty()) {
             throw new IllegalArgumentException("Cannot create a HA remote naming store without any servers to connect to");
         }
-        this.channelCreationTimeoutInMillis = channelCreationTimeoutInMillis;
-        this.channelCreationOptions = channelCreationOptions;
-        this.connectionTimeout = connectionTimeout;
-        this.callbackHandler = callbackHandler;
-        this.connectOptions = connectOptions;
-        this.connectionURIs = connectionURIs;
-        this.clientEndpoint = clientEndpoint;
+        namingStoreConnections = new ArrayList<RemoteNamingStoreConnectionInfo>(connectionURIs.size());
+        for (int i = 0; i < connectionURIs.size(); i++) {
+            final RemoteNamingStoreConnectionInfo connectionInfo = new RemoteNamingStoreConnectionInfo(clientEndpoint, connectionURIs.get(i), connectOptions, connectionTimeout, callbackHandler, channelCreationTimeoutInMillis, channelCreationOptions);
+            namingStoreConnections.add(connectionInfo);
+        }
         if (randomServer) {
-            nextServer = new Random().nextInt(connectionURIs.size());
+            nextServer = new Random().nextInt(namingStoreConnections.size());
+        } else {
+            nextServer = 0;
+        }
+    }
+
+    /**
+     * @param namingStoreConnections The connection information to the destination server(s). Cannot be null or empty
+     * @param randomServer           True if a random connection URI has to be picked, from among the passed
+     *                               <code>namingStoreConnections</code> for establishing the first connection
+     */
+    public HaRemoteNamingStore(final List<RemoteNamingStoreConnectionInfo> namingStoreConnections, final boolean randomServer) {
+        if (namingStoreConnections == null || namingStoreConnections.isEmpty()) {
+            throw new IllegalArgumentException("Cannot create a HA remote naming store without any servers to connect to");
+        }
+        this.namingStoreConnections = Collections.unmodifiableList(namingStoreConnections);
+        if (randomServer) {
+            nextServer = new Random().nextInt(namingStoreConnections.size());
         } else {
             nextServer = 0;
         }
@@ -145,15 +168,19 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
         RemoteNamingStore store = null;
 
         //we loop through and attempt to connect to ever server, one at a time
+        final List<URI> attemptedConnectionURIs = new ArrayList<URI>();
         do {
-            final URI connectionUri = connectionURIs.get(currentServer);
+            final RemoteNamingStoreConnectionInfo connectionInfo = namingStoreConnections.get(currentServer);
+            final URI connectionUri = connectionInfo.getConnectionURI();
+            attemptedConnectionURIs.add(connectionUri);
             Connection connection = null;
             try {
-                final IoFuture<Connection> futureConnection = clientEndpoint.connect(connectionUri, connectOptions, callbackHandler);
-                connection = IoFutureHelper.get(futureConnection, connectionTimeout, TimeUnit.MILLISECONDS);
+                final Endpoint clientEndpoint = connectionInfo.getEndpoint();
+                final IoFuture<Connection> futureConnection = clientEndpoint.connect(connectionUri, connectionInfo.getConnectionOptions(), connectionInfo.getCallbackHandler());
+                connection = IoFutureHelper.get(futureConnection, connectionInfo.getConnectionTimeout(), TimeUnit.MILLISECONDS);
                 // open a channel
-                final IoFuture<Channel> futureChannel = connection.openChannel("naming", channelCreationOptions);
-                final Channel channel = IoFutureHelper.get(futureChannel, channelCreationTimeoutInMillis, TimeUnit.MILLISECONDS);
+                final IoFuture<Channel> futureChannel = connection.openChannel("naming", connectionInfo.getChannelCreationOptions());
+                final Channel channel = IoFutureHelper.get(futureChannel, connectionInfo.getChannelCreationTimeout(), TimeUnit.MILLISECONDS);
                 store = RemoteContextFactory.createVersionedStore(channel);
                 this.connection = connection;
                 break;
@@ -170,10 +197,10 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
             }
         } while (currentServer != startingNext);
         if (store == null) {
-            throw new NamingException("Failed to connect to any server. Servers tried: " + connectionURIs);
+            throw new NamingException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);
         }
         this.currentNamingStore = store;
-        for(final CurrentEjbClientConnection currentEjbClientContext : currentEjbClientContexts) {
+        for (final CurrentEjbClientConnection currentEjbClientContext : currentEjbClientContexts) {
             currentEjbClientContext.setConnection(connection);
         }
         return store;
@@ -183,7 +210,7 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
         assert Thread.holdsLock(this);
         final int next = nextServer;
         final int newValue = next + 1;
-        if (newValue == connectionURIs.size()) {
+        if (newValue == namingStoreConnections.size()) {
             nextServer = 0;
         } else {
             nextServer = newValue;
@@ -323,7 +350,7 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
     public synchronized void close() throws NamingException {
         closed = true;
         try {
-            if(connection != null) {
+            if (connection != null) {
                 connection.close();
             }
         } catch (IOException e) {
@@ -334,8 +361,16 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
     }
 
     @Override
+    public void closeAsync() {
+        closed = true;
+        if (connection != null) {
+            connection.closeAsync();
+        }
+    }
+
+    @Override
     public synchronized void addEjbContext(final CurrentEjbClientConnection connection) {
-        if(this.connection != null) {
+        if (this.connection != null) {
             connection.setConnection(this.connection);
         }
         this.currentEjbClientContexts.add(connection);
