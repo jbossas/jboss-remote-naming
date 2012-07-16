@@ -21,6 +21,31 @@
  */
 package org.jboss.naming.remote;
 
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.net.URI;
+import java.util.HashMap;
+import java.util.Hashtable;
+import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import javax.naming.Binding;
+import javax.naming.CompositeName;
+import javax.naming.Context;
+import javax.naming.InitialContext;
+import javax.naming.LinkRef;
+import javax.naming.Name;
+import javax.naming.NameClassPair;
+import javax.naming.NameNotFoundException;
+import javax.naming.NamingEnumeration;
+import javax.naming.Reference;
+import javax.naming.StringRefAddr;
+import javax.naming.spi.ObjectFactory;
+
+import org.jboss.ejb.client.ContextSelector;
+import org.jboss.ejb.client.EJBClientContext;
 import org.jboss.naming.remote.client.InitialContextFactory;
 import org.jboss.naming.remote.client.RemoteContext;
 import org.jboss.naming.remote.protocol.IoFutureHelper;
@@ -145,6 +170,39 @@ public class ClientConnectionTest {
             assertEquals("TestValue", remoteContext.lookup("test/nested"));
         } finally {
             localContext.destroySubcontext("test");
+        }
+    }
+
+    @Test
+    public void testLookupReference() throws Exception {
+        final Name name = new CompositeName("test");
+        final Reference reference = new Reference(String.class.getName(), new StringRefAddr("blah", "test"),
+                TestObjectFactory.class.getName(), null);
+        try {
+            localContext.bind(name, reference);
+            final Object result = remoteContext.lookup(name);
+            assertEquals("test", result);
+        } finally {
+            localContext.unbind(name);
+        }
+    }
+
+    public static class TestObjectFactory implements ObjectFactory {
+        @Override
+        public Object getObjectInstance(Object obj, Name name, Context nameCtx, Hashtable<?, ?> environment) throws Exception {
+            return ((Reference) obj).get(0).getContent();
+        }
+    }
+
+    @Test
+    public void testLookupLinkRef() throws Exception {
+        try {
+            localContext.bind("test", "testValue");
+            localContext.bind("link", new LinkRef("./test"));
+            assertEquals("testValue", remoteContext.lookup("link"));
+        } finally {
+            localContext.unbind("test");
+            localContext.unbind("link");
         }
     }
 
