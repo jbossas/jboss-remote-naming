@@ -89,7 +89,6 @@ public class RemoteContext implements Context, NameParser {
             result = resolveLink((LinkRef)result);
         }
         else if (result instanceof Reference) {
-            log.info("result: "+result);
             result = getObjectInstance((Reference)result, name, environment);
             if (result instanceof LinkRef) {
                 result = resolveLink((LinkRef)result);
