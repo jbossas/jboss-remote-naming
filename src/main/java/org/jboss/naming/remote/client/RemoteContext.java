@@ -29,14 +29,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import javax.naming.Binding;
 import javax.naming.CompositeName;
 import javax.naming.Context;
+import javax.naming.InitialContext;
+import javax.naming.LinkRef;
 import javax.naming.Name;
 import javax.naming.NameClassPair;
 import javax.naming.NameParser;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
+import javax.naming.Reference;
+import javax.naming.spi.ObjectFactory;
+
 import org.jboss.logging.Logger;
+
 import static org.jboss.naming.remote.client.ClientUtil.isEmpty;
 import static org.jboss.naming.remote.client.ClientUtil.namingEnumeration;
+import static org.jboss.naming.remote.client.ClientUtil.namingException;
 
 /**
  *
@@ -76,9 +83,49 @@ public class RemoteContext implements Context, NameParser {
         if (isEmpty(name)) {
             return new RemoteContext(prefix, namingStore, environment);
         }
-        return namingStore.lookup(getAbsoluteName(name));
+        final Name absoluteName = getAbsoluteName(name);
+        Object result = namingStore.lookup(absoluteName);
+        if (result instanceof LinkRef) {
+            result = resolveLink((LinkRef)result);
+        }
+        else if (result instanceof Reference) {
+            log.info("result: "+result);
+            result = getObjectInstance((Reference)result, name, environment);
+            if (result instanceof LinkRef) {
+                result = resolveLink((LinkRef)result);
+            }
+        }
+        return result;
+    }
+  
+    private Object getObjectInstance(final Reference reference, final Name name, final Hashtable<?, ?> environment) throws NamingException {
+        try {
+            final Class<?> factoryClass = Thread.currentThread().getContextClassLoader().loadClass(reference.getFactoryClassName());
+            ObjectFactory factory = ObjectFactory.class.cast(factoryClass.newInstance());
+            return factory.getObjectInstance(reference, name, this, environment);
+        } catch(NamingException e) {
+            throw e;
+        } catch(Throwable t) {
+            throw namingException("failed to get object instance from reference", t);
+        }
     }
 
+    private Object resolveLink(LinkRef result) throws NamingException {
+        final Object linkResult;
+        try {
+            final LinkRef linkRef = (LinkRef) result;
+            final String referenceName = linkRef.getLinkName();
+            if (referenceName.startsWith("./")) {
+                linkResult = lookup(referenceName.substring(2));
+            } else {
+                linkResult = new InitialContext().lookup(referenceName);
+            }
+        } catch (Throwable t) {
+            throw namingException("failed to deref link",t);
+        }
+        return linkResult;
+    }
+  
     public Object lookup(final String name) throws NamingException {
         return lookup(parse(name));
     }
