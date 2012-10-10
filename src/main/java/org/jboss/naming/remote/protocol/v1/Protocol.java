@@ -64,13 +64,13 @@ import static org.jboss.naming.remote.protocol.v1.WriteUtil.writeResponse;
  * @author John Bailey
  */
 class Protocol {
-    static ProtocolCommand<Object> LOOKUP = new BaseProtocolCommand<Object>((byte) 0x01) {
+    static ProtocolCommand<Object> LOOKUP = new BaseProtocolCommand<Object, ClassLoadingNamedIoFuture<Object>>((byte) 0x01) {
         public Object execute(final Channel channel, final Object... args) throws IOException, NamingException {
             if (args.length != 1 || !(args[0] instanceof Name)) {
                 throw new IllegalArgumentException("Lookup requires a single name argument");
             }
             final Name name = Name.class.cast(args[0]);
-            final NamedIoFuture<Object> future = new NamedIoFuture<Object>(name);
+            final ClassLoadingNamedIoFuture<Object> future = new ClassLoadingNamedIoFuture<Object>(name, Thread.currentThread().getContextClassLoader());
             final int correlationId = reserveNextCorrelationId(future);
             try {
                 write(channel, new WriteUtil.Writer() {
@@ -109,7 +109,7 @@ class Protocol {
 
         public void handleServerMessage(Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
 
-            final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+            final Unmarshaller unmarshaller = prepareForUnMarshalling(input, this.getClass().getClassLoader());
             Name name;
             try {
                 byte paramType = unmarshaller.readByte();
@@ -146,13 +146,13 @@ class Protocol {
         }
 
         public void handleClientMessage(final DataInput input, final int correlationId, final RemoteNamingStore namingStore) throws IOException {
-            readResult(correlationId, input, new ValueReader<Object>() {
-                public void read(final DataInput input, ProtocolIoFuture<Object> future) throws IOException {
+            readResult(correlationId, input, new ValueReader<ClassLoadingNamedIoFuture<Object>>() {
+                public void read(final DataInput input, ClassLoadingNamedIoFuture<Object> future) throws IOException {
                     byte parameterType = input.readByte();
                     switch (parameterType) {
                         case OBJECT: {
                             try {
-                                final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+                                final Unmarshaller unmarshaller = prepareForUnMarshalling(input, future.getClassLoader());
                                 future.setResult(unmarshaller.readObject());
                                 unmarshaller.finish();
                             } catch (ClassNotFoundException e) {
@@ -176,7 +176,7 @@ class Protocol {
         }
     };
 
-    static ProtocolCommand<Void> BIND = new BaseProtocolCommand<Void>((byte) 0x02) {
+    static ProtocolCommand<Void> BIND = new BaseProtocolCommand<Void, ProtocolIoFuture<Void>>((byte) 0x02) {
         public Void execute(final Channel channel, final Object... args) throws IOException, NamingException {
             if (args.length != 2 || !(args[0] instanceof Name)) {
                 throw new IllegalArgumentException("Rebind requires a name and object argument");
@@ -224,7 +224,7 @@ class Protocol {
         }
 
         public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
-            final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+            final Unmarshaller unmarshaller = prepareForUnMarshalling(input, this.getClass().getClassLoader());
             Name name;
             Object object;
             try {
@@ -254,15 +254,15 @@ class Protocol {
         }
 
         public void handleClientMessage(DataInput input, int correlationId, RemoteNamingStore namingStore) throws IOException {
-            readResult(correlationId, input, new ValueReader<Object>() {
-                public void read(final DataInput input, ProtocolIoFuture<Object> future) throws IOException {
+            readResult(correlationId, input, new ValueReader<ProtocolIoFuture<Void>>() {
+                public void read(final DataInput input, ProtocolIoFuture<Void> future) throws IOException {
                     future.setResult(null);
                 }
             });
         }
     };
 
-    static ProtocolCommand<Void> REBIND = new BaseProtocolCommand<Void>((byte) 0x03) {
+    static ProtocolCommand<Void> REBIND = new BaseProtocolCommand<Void, ProtocolIoFuture<Void>>((byte) 0x03) {
         public Void execute(final Channel channel, final Object... args) throws IOException, NamingException {
             if (args.length != 2 || !(args[0] instanceof Name)) {
                 throw new IllegalArgumentException("Bind requires a name and object argument");
@@ -310,7 +310,7 @@ class Protocol {
         }
 
         public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
-            final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+            final Unmarshaller unmarshaller = prepareForUnMarshalling(input, this.getClass().getClassLoader());
             Name name;
             Object object;
             try {
@@ -340,15 +340,15 @@ class Protocol {
         }
 
         public void handleClientMessage(DataInput input, int correlationId, RemoteNamingStore namingStore) throws IOException {
-            readResult(correlationId, input, new ValueReader<Object>() {
-                public void read(final DataInput input, ProtocolIoFuture<Object> future) throws IOException {
+            readResult(correlationId, input, new ValueReader<ProtocolIoFuture<Void>>() {
+                public void read(final DataInput input, ProtocolIoFuture<Void> future) throws IOException {
                     future.setResult(null);
                 }
             });
         }
     };
 
-    static ProtocolCommand<List<NameClassPair>> LIST = new BaseProtocolCommand<List<NameClassPair>>((byte) 0x04) {
+    static ProtocolCommand<List<NameClassPair>> LIST = new BaseProtocolCommand<List<NameClassPair>, ProtocolIoFuture<List<NameClassPair>>>((byte) 0x04) {
         public List<NameClassPair> execute(final Channel channel, final Object... args) throws IOException, NamingException {
             if (args.length != 1 || !(args[0] instanceof Name)) {
                 throw new IllegalArgumentException("List requires a name argument.");
@@ -393,7 +393,7 @@ class Protocol {
         }
 
         public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
-            final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+            final Unmarshaller unmarshaller = prepareForUnMarshalling(input, this.getClass().getClassLoader());
             Name name;
             try {
                 byte paramType = unmarshaller.readByte();
@@ -435,15 +435,15 @@ class Protocol {
         }
 
         public void handleClientMessage(DataInput input, int correlationId, RemoteNamingStore namingStore) throws IOException {
-            readResult(correlationId, input, new ValueReader<Object>() {
-                public void read(final DataInput input, ProtocolIoFuture<Object> future) throws IOException {
+            readResult(correlationId, input, new ValueReader<ProtocolIoFuture<List<NameClassPair>>>() {
+                public void read(final DataInput input, ProtocolIoFuture<List<NameClassPair>> future) throws IOException {
                     byte parameterType = input.readByte();
                     if (parameterType != Constants.LIST) {
                         throw new IOException("Unexpected response parameter received.");
                     }
                     final int listSize = input.readInt();
                     final List<NameClassPair> results = new ArrayList<NameClassPair>(listSize);
-                    final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+                    final Unmarshaller unmarshaller = prepareForUnMarshalling(input, this.getClass().getClassLoader());
                     for (int i = 0; i < listSize; i++) {
                         try {
                             results.add(unmarshaller.readObject(NameClassPair.class));
@@ -460,14 +460,14 @@ class Protocol {
         }
     };
 
-    static ProtocolCommand<List<Binding>> LIST_BINDINGS = new BaseProtocolCommand<List<Binding>>((byte) 0x05) {
+    static ProtocolCommand<List<Binding>> LIST_BINDINGS = new BaseProtocolCommand<List<Binding>, ClassLoadingNamedIoFuture<List<Binding>>>((byte) 0x05) {
         public List<Binding> execute(final Channel channel, final Object... args) throws IOException, NamingException {
             if (args.length != 1 || !(args[0] instanceof Name)) {
                 throw new IllegalArgumentException("List requires a name argument.");
             }
             final Name name = Name.class.cast(args[0]);
 
-            final NamedIoFuture<List<Binding>> future = new NamedIoFuture<List<Binding>>(name);
+            final ClassLoadingNamedIoFuture<List<Binding>> future = new ClassLoadingNamedIoFuture<List<Binding>>(name, Thread.currentThread().getContextClassLoader());
             final int correlationId = reserveNextCorrelationId(future);
             try {
                 write(channel, new WriteUtil.Writer() {
@@ -505,7 +505,7 @@ class Protocol {
         }
 
         public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
-            final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+            final Unmarshaller unmarshaller = prepareForUnMarshalling(input, this.getClass().getClassLoader());
             Name name;
             try {
                 byte paramType = unmarshaller.readByte();
@@ -552,15 +552,15 @@ class Protocol {
         }
 
         public void handleClientMessage(final DataInput input, final int correlationId, final RemoteNamingStore namingStore) throws IOException {
-            readResult(correlationId, input, new ValueReader<Object>() {
-                public void read(final DataInput input, ProtocolIoFuture<Object> future) throws IOException {
+            readResult(correlationId, input, new ValueReader<ClassLoadingNamedIoFuture<List<Binding>>>() {
+                public void read(final DataInput input, ClassLoadingNamedIoFuture<List<Binding>> future) throws IOException {
                     byte parameterType = input.readByte();
                     if (parameterType != Constants.LIST) {
                         throw new IOException("Unexpected response parameter received.");
                     }
                     final int listSize = input.readInt();
-                    final List<NameClassPair> results = new ArrayList<NameClassPair>(listSize);
-                    final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+                    final List<Binding> results = new ArrayList<Binding>(listSize);
+                    final Unmarshaller unmarshaller = prepareForUnMarshalling(input, future.getClassLoader());
                     for (int i = 0; i < listSize; i++) {
                         parameterType = unmarshaller.readByte();
                         switch (parameterType) {
@@ -599,7 +599,7 @@ class Protocol {
         }
     };
 
-    static ProtocolCommand<Void> UNBIND = new BaseProtocolCommand<Void>((byte) 0x06) {
+    static ProtocolCommand<Void> UNBIND = new BaseProtocolCommand<Void, ProtocolIoFuture<Void>>((byte) 0x06) {
         public Void execute(final Channel channel, final Object... args) throws IOException, NamingException {
             if (args.length != 1 || !(args[0] instanceof Name)) {
                 throw new IllegalArgumentException("Rebind requires a name");
@@ -644,7 +644,7 @@ class Protocol {
         }
 
         public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
-            final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+            final Unmarshaller unmarshaller = prepareForUnMarshalling(input, this.getClass().getClassLoader());
             Name name;
             try {
                 byte paramType = unmarshaller.readByte();
@@ -667,15 +667,15 @@ class Protocol {
         }
 
         public void handleClientMessage(DataInput input, int correlationId, RemoteNamingStore namingStore) throws IOException {
-            readResult(correlationId, input, new ValueReader<Object>() {
-                public void read(final DataInput input, ProtocolIoFuture<Object> future) throws IOException {
+            readResult(correlationId, input, new ValueReader<ProtocolIoFuture<Void>>() {
+                public void read(final DataInput input, ProtocolIoFuture<Void> future) throws IOException {
                     future.setResult(null);
                 }
             });
         }
     };
 
-    static ProtocolCommand<Void> RENAME = new BaseProtocolCommand<Void>((byte) 0x07) {
+    static ProtocolCommand<Void> RENAME = new BaseProtocolCommand<Void, ProtocolIoFuture<Void>>((byte) 0x07) {
         public Void execute(final Channel channel, final Object... args) throws IOException, NamingException {
             if (args.length != 2 || !(args[0] instanceof Name) || !(args[0] instanceof Name)) {
                 throw new IllegalArgumentException("Rename requires two name arguments");
@@ -723,7 +723,7 @@ class Protocol {
         }
 
         public void handleServerMessage(final Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
-            final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+            final Unmarshaller unmarshaller = prepareForUnMarshalling(input, this.getClass().getClassLoader());
             final Name name;
             final Name newName;
             try {
@@ -753,15 +753,15 @@ class Protocol {
         }
 
         public void handleClientMessage(DataInput input, int correlationId, RemoteNamingStore namingStore) throws IOException {
-            readResult(correlationId, input, new ValueReader<Object>() {
-                public void read(final DataInput input, ProtocolIoFuture<Object> future) throws IOException {
+            readResult(correlationId, input, new ValueReader<ProtocolIoFuture<Void>>() {
+                public void read(final DataInput input, ProtocolIoFuture<Void> future) throws IOException {
                     future.setResult(null);
                 }
             });
         }
     };
 
-    static ProtocolCommand<Context> CREATE_SUBCONTEXT = new BaseProtocolCommand<Context>((byte) 0x08) {
+    static ProtocolCommand<Context> CREATE_SUBCONTEXT = new BaseProtocolCommand<Context, NamedIoFuture<Context>>((byte) 0x08) {
 
         public Context execute(final Channel channel, final Object... args) throws IOException, NamingException {
             if (args.length != 1 || !(args[0] instanceof Name)) {
@@ -809,7 +809,7 @@ class Protocol {
 
             Name name;
             try {
-                final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+                final Unmarshaller unmarshaller = prepareForUnMarshalling(input, this.getClass().getClassLoader());
                 byte paramType = unmarshaller.readByte();
                 if (paramType != NAME) {
                     remoteNamingService.getLogger().unexpectedParameterType(NAME, paramType);
@@ -836,8 +836,8 @@ class Protocol {
         }
 
         public void handleClientMessage(final DataInput input, final int correlationId, final RemoteNamingStore namingStore) throws IOException {
-            readResult(correlationId, input, new ValueReader<Context>() {
-                public void read(final DataInput input, final ProtocolIoFuture<Context> future) throws IOException {
+            readResult(correlationId, input, new ValueReader<NamedIoFuture<Context>>() {
+                public void read(final DataInput input, final NamedIoFuture<Context> future) throws IOException {
                     final byte parameterType = input.readByte();
                     if (parameterType != CONTEXT) {
                         throw new IOException("Unexpected paramType");
@@ -848,14 +848,14 @@ class Protocol {
         }
     };
 
-    static ProtocolCommand<Object> DESTROY_SUBCONTEXT = new BaseProtocolCommand<Object>((byte) 0x09) {
+    static ProtocolCommand<Void> DESTROY_SUBCONTEXT = new BaseProtocolCommand<Void, NamedIoFuture<Void>>((byte) 0x09) {
 
-        public Context execute(final Channel channel, final Object... args) throws IOException, NamingException {
+        public Void execute(final Channel channel, final Object... args) throws IOException, NamingException {
             if (args.length != 1 || !(args[0] instanceof Name)) {
                 throw new IllegalArgumentException("Destroy subcontext requires a single name argument");
             }
             final Name name = Name.class.cast(args[0]);
-            final NamedIoFuture<Context> future = new NamedIoFuture<Context>(name);
+            final NamedIoFuture<Void> future = new NamedIoFuture<Void>(name);
             final int correlationId = reserveNextCorrelationId(future);
             try {
                 write(channel, new WriteUtil.Writer() {
@@ -896,7 +896,7 @@ class Protocol {
 
             Name name;
             try {
-                final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+                final Unmarshaller unmarshaller = prepareForUnMarshalling(input, this.getClass().getClassLoader());
                 byte paramType = unmarshaller.readByte();
                 if (paramType != NAME) {
                     remoteNamingService.getLogger().unexpectedParameterType(NAME, paramType);
@@ -916,21 +916,22 @@ class Protocol {
         }
 
         public void handleClientMessage(final DataInput input, final int correlationId, final RemoteNamingStore namingStore) throws IOException {
-            readResult(correlationId, input, new ValueReader<Object>() {
-                public void read(final DataInput input, ProtocolIoFuture<Object> future) throws IOException {
+            readResult(correlationId, input, new ValueReader<NamedIoFuture<Void>>() {
+                public void read(final DataInput input, NamedIoFuture<Void> future) throws IOException {
+                	// should this return the context?
                     future.setResult(null);
                 }
             });
         }
     };
 
-    static ProtocolCommand<Object> LOOKUP_LINK = new BaseProtocolCommand<Object>((byte) 0x10) {
+    static ProtocolCommand<Object> LOOKUP_LINK = new BaseProtocolCommand<Object, ClassLoadingNamedIoFuture<Object>>((byte) 0x10) {
         public Object execute(final Channel channel, final Object... args) throws IOException, NamingException {
             if (args.length != 1 || !(args[0] instanceof Name)) {
                 throw new IllegalArgumentException("Lookup link requires a single name argument");
             }
             final Name name = Name.class.cast(args[0]);
-            final NamedIoFuture<Object> future = new NamedIoFuture<Object>(name);
+            final ClassLoadingNamedIoFuture<Object> future = new ClassLoadingNamedIoFuture<Object>(name, Thread.currentThread().getContextClassLoader());
             final int correlationId = reserveNextCorrelationId(future);
             try {
                 write(channel, new WriteUtil.Writer() {
@@ -969,7 +970,7 @@ class Protocol {
 
         public void handleServerMessage(Channel channel, final DataInput input, final int correlationId, final RemoteNamingService remoteNamingService) throws IOException {
 
-            final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+            final Unmarshaller unmarshaller = prepareForUnMarshalling(input, this.getClass().getClassLoader());
             Name name;
             try {
                 byte paramType = unmarshaller.readByte();
@@ -1006,13 +1007,13 @@ class Protocol {
         }
 
         public void handleClientMessage(final DataInput input, final int correlationId, final RemoteNamingStore namingStore) throws IOException {
-            readResult(correlationId, input, new ValueReader<Object>() {
-                public void read(final DataInput input, ProtocolIoFuture<Object> future) throws IOException {
+            readResult(correlationId, input, new ValueReader<ClassLoadingNamedIoFuture<Object>>() {
+                public void read(final DataInput input, ClassLoadingNamedIoFuture<Object> future) throws IOException {
                     byte parameterType = input.readByte();
                     switch (parameterType) {
                         case BINDING: {
                             try {
-                                final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+                                final Unmarshaller unmarshaller = prepareForUnMarshalling(input, future.getClassLoader());
                                 future.setResult(unmarshaller.readObject());
                                 unmarshaller.finish();
                             } catch (ClassNotFoundException e) {
@@ -1041,6 +1042,20 @@ class Protocol {
 
         private NamedIoFuture(Name name) {
             this.name = name;
+        }
+    }
+
+    private static class ClassLoadingNamedIoFuture<T> extends NamedIoFuture<T> {
+        /** The classloader to use when loading any returned objects*/
+        private ClassLoader classLoader;
+
+        private ClassLoadingNamedIoFuture(Name name, ClassLoader classLoader) {
+            super(name);
+        	this.classLoader = classLoader;
+        }
+
+        public ClassLoader getClassLoader() {
+        	return classLoader;
         }
     }
 
