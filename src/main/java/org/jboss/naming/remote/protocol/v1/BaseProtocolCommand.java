@@ -30,17 +30,16 @@ import org.jboss.naming.remote.protocol.ProtocolCommand;
 import static org.jboss.naming.remote.protocol.v1.Constants.EXCEPTION;
 import static org.jboss.naming.remote.protocol.v1.Constants.FAILURE;
 import static org.jboss.naming.remote.protocol.v1.Constants.SUCCESS;
-import static org.jboss.naming.remote.protocol.v1.Constants.VOID;
 import static org.jboss.naming.remote.protocol.v1.ReadUtil.prepareForUnMarshalling;
 
 /**
  * @author John Bailey
  */
-abstract class BaseProtocolCommand<T> implements ProtocolCommand<T> {
+abstract class BaseProtocolCommand<T, F extends ProtocolIoFuture<T>> implements ProtocolCommand<T> {
     public static final int DEFAULT_TIMEOUT = 10;
 
     private int nextCorrelationId = 1;
-    private final Map<Integer, ProtocolIoFuture> requests = new HashMap<Integer, ProtocolIoFuture>();
+    private final Map<Integer, F> requests = new HashMap<Integer, F>();
 
     private final byte commandId;
 
@@ -52,8 +51,8 @@ abstract class BaseProtocolCommand<T> implements ProtocolCommand<T> {
         return commandId;
     }
 
-    protected <T> void readResult(final int correlationId, final DataInput input, final ValueReader<T> valueReader) throws IOException {
-        final ProtocolIoFuture<T> future = (ProtocolIoFuture<T>) getFuture(correlationId);
+    protected void readResult(final int correlationId, final DataInput input, final ValueReader<F> valueReader) throws IOException {
+        final F future = getFuture(correlationId);
         try {
             byte outcome = input.readByte();
             if (outcome == SUCCESS) {
@@ -63,7 +62,7 @@ abstract class BaseProtocolCommand<T> implements ProtocolCommand<T> {
                 if (parameterType != EXCEPTION) {
                     throw new IOException("Unexpected response parameter received.");
                 }
-                final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
+                final Unmarshaller unmarshaller = prepareForUnMarshalling(input, this.getClass().getClassLoader());
                 final Exception exception = unmarshaller.readObject(Exception.class);
                 future.setHeldException(exception);
             } else {
@@ -88,7 +87,7 @@ abstract class BaseProtocolCommand<T> implements ProtocolCommand<T> {
         return next;
     }
 
-    protected synchronized int reserveNextCorrelationId(ProtocolIoFuture<?> future) {
+    protected synchronized int reserveNextCorrelationId(F future) {
         Integer next = getNextCorrelationId();
         while (requests.containsKey(next)) {
             next = getNextCorrelationId();
@@ -98,7 +97,7 @@ abstract class BaseProtocolCommand<T> implements ProtocolCommand<T> {
         return next;
     }
 
-    private synchronized ProtocolIoFuture<?> getFuture(final int correlationId) {
+    private synchronized F getFuture(final int correlationId) {
         return requests.get(correlationId);
     }
 
@@ -107,37 +106,7 @@ abstract class BaseProtocolCommand<T> implements ProtocolCommand<T> {
     }
 
 
-    protected interface ValueReader<T> {
-        void read(DataInput input, ProtocolIoFuture<T> future) throws IOException;
-    }
-
-    protected class MarshalledValueReader<T> implements ValueReader<T> {
-        private final byte expectedType;
-
-        public MarshalledValueReader(final byte expectedType) {
-            this.expectedType = expectedType;
-        }
-
-        public byte getExpectedType() {
-            return expectedType;
-        }
-
-        @SuppressWarnings("unchecked")
-        public void read(DataInput input, ProtocolIoFuture<T> future) throws IOException {
-            if (expectedType != VOID) {
-                byte parameterType = input.readByte();
-                if (parameterType != expectedType) {
-                    throw new IOException("Unexpected response parameter received.");
-                }
-                final Unmarshaller unmarshaller = prepareForUnMarshalling(input);
-                try {
-                    future.setResult((T)unmarshaller.readObject());
-                } catch (ClassNotFoundException e) {
-                    throw new IOException(e);
-                } catch (ClassCastException e) {
-                    throw new IOException(e);
-                }
-            }
-        }
+    protected interface ValueReader<F extends ProtocolIoFuture<?>> {
+        void read(DataInput input, F future) throws IOException;
     }
 }

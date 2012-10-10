@@ -29,6 +29,7 @@ import org.jboss.marshalling.ByteInput;
 import org.jboss.marshalling.MarshallerFactory;
 import org.jboss.marshalling.Marshalling;
 import org.jboss.marshalling.MarshallingConfiguration;
+import org.jboss.marshalling.SimpleClassResolver;
 import org.jboss.marshalling.Unmarshaller;
 import static org.jboss.naming.remote.protocol.v1.Constants.MARSHALLING_STRATEGY;
 
@@ -45,8 +46,8 @@ public class ReadUtil {
         }
     }
 
-    static Unmarshaller prepareForUnMarshalling(final DataInput dataInput) throws IOException {
-        final Unmarshaller unmarshaller = getUnMarshaller(marshallerFactory);
+    static Unmarshaller prepareForUnMarshalling(final DataInput dataInput, final ClassLoader classloader) throws IOException {
+        final Unmarshaller unmarshaller = getUnMarshaller(marshallerFactory, classloader);
         final InputStream is = new InputStream() {
             @Override
             public int read() throws IOException {
@@ -66,9 +67,10 @@ public class ReadUtil {
         return unmarshaller;
     }
 
-    static Unmarshaller getUnMarshaller(final MarshallerFactory marshallerFactory) throws IOException {
+    static Unmarshaller getUnMarshaller(final MarshallerFactory marshallerFactory, final ClassLoader classloader) throws IOException {
         final MarshallingConfiguration marshallingConfiguration = new MarshallingConfiguration();
         marshallingConfiguration.setVersion(2);
+    	marshallingConfiguration.setClassResolver(new SimpleClassResolver(classloader));
         return marshallerFactory.createUnmarshaller(marshallingConfiguration);
     }
 
