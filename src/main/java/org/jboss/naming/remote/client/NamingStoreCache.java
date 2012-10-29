@@ -1,6 +1,7 @@
 package org.jboss.naming.remote.client;
 
 import org.jboss.logging.Logger;
+import org.jboss.naming.remote.client.ejb.EJBClientHandler;
 import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.Endpoint;
 import org.xnio.OptionMap;
@@ -46,6 +47,28 @@ public class NamingStoreCache {
      */
     public synchronized RemoteNamingStore getRemoteNamingStore(final Endpoint clientEndpoint, final String connectionURL, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout,
                                                                final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final List<RemoteContext.CloseTask> contextCloseTasks, boolean randomServer) throws IOException, NamingException, URISyntaxException {
+        return getRemoteNamingStore(clientEndpoint, connectionURL, connectOptions, callbackHandler, connectionTimeout, channelCreationOptions, channelCreationTimeoutInMillis, contextCloseTasks, randomServer, null);
+    }
+
+    /**
+     * Returns a {@link Channel} for the passed connection properties. If the connection is already created
+     * and cached for the passed connection properties, then the cached channel will be returned. Else a new
+     * connection and channel will be created and that new channel returned.
+     *
+     * @param clientEndpoint                 The {@link org.jboss.remoting3.Endpoint} that will be used to open a connection
+     * @param connectionURL                  The connection URL
+     * @param connectOptions                 The options to be used for connection creation
+     * @param callbackHandler                The callback handler to be used for connection creation
+     * @param connectionTimeout              The connection timeout in milli seconds that will be used while creating a connection
+     * @param channelCreationOptions         The {@link org.xnio.OptionMap options} that will be used if/when the channel is created
+     * @param channelCreationTimeoutInMillis The timeout in milli seconds, that will be used while opening a channel
+     * @param contextCloseTasks              The tasks to be performed when the context is closed
+     * @return
+     * @throws IOException
+     */
+    public synchronized RemoteNamingStore getRemoteNamingStore(final Endpoint clientEndpoint, final String connectionURL, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout,
+                                                               final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final List<RemoteContext.CloseTask> contextCloseTasks, boolean randomServer,
+                                                               final EJBClientHandler ejbClientHandler) throws IOException, NamingException, URISyntaxException {
         final CacheKey key = new CacheKey(clientEndpoint, callbackHandler.getClass(), connectOptions, connectionURL);
         CacheEntry cacheEntry = cache.get(key);
         if (cacheEntry == null) {
@@ -57,11 +80,11 @@ public class NamingStoreCache {
                 for (final String url : urls) {
                     connectionUris.add(new URI(url.trim()));
                 }
-                store = new HaRemoteNamingStore(channelCreationTimeoutInMillis, channelCreationOptions, connectionTimeout, callbackHandler, connectOptions, connectionUris, clientEndpoint, randomServer);
+                store = new HaRemoteNamingStore(channelCreationTimeoutInMillis, channelCreationOptions, connectionTimeout, callbackHandler, connectOptions, connectionUris, clientEndpoint, randomServer, ejbClientHandler);
             } else {
                 store = new HaRemoteNamingStore(channelCreationTimeoutInMillis, channelCreationOptions, connectionTimeout,
                         callbackHandler, connectOptions, Collections.singletonList(new URI(connectionURL.trim())),
-                        clientEndpoint, randomServer);
+                        clientEndpoint, randomServer, ejbClientHandler);
             }
             cacheEntry = new CacheEntry(store);
             cache.put(key, cacheEntry);

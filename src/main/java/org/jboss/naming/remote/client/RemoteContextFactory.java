@@ -27,6 +27,7 @@ import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
 import org.jboss.logging.Logger;
+import org.jboss.naming.remote.client.ejb.EJBClientHandler;
 import org.jboss.naming.remote.protocol.Versions;
 import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.MessageInputStream;
@@ -48,6 +49,10 @@ class RemoteContextFactory {
     private static final Logger log = Logger.getLogger(RemoteContextFactory.class);
 
     static RemoteNamingStore createVersionedStore(final Channel channel) throws IOException {
+        return createVersionedStore(channel, null);
+    }
+
+    static RemoteNamingStore createVersionedStore(final Channel channel, final EJBClientHandler ejbClientHandler) throws IOException {
         IoFuture<byte[]> futureHeader = ClientVersionReceiver.getVersions(channel);
         IoFuture.Status result = futureHeader.await(5, TimeUnit.SECONDS);
         switch (result) {
@@ -65,7 +70,7 @@ class RemoteContextFactory {
                 highest = current;
             }
         }
-        final RemoteNamingStore store = Versions.getRemoteNamingStore(highest, channel);
+        final RemoteNamingStore store = Versions.getRemoteNamingStore(highest, channel, ejbClientHandler);
         return store;
     }
 
