@@ -46,6 +46,16 @@ public interface RemoteNamingStore {
     Object lookupLink(final Name name) throws NamingException;
     void close() throws NamingException;
     void closeAsync();
+    /**
+     * @deprecated Since 1.0.6.Final
+     */
+    @Deprecated
     void addEjbContext(CurrentEjbClientConnection connection);
+
+    /**
+     * @deprecated Since 1.0.6.Final
+     * @param connection
+     */
+    @Deprecated
     void removeEjbContext(CurrentEjbClientConnection connection);
 }

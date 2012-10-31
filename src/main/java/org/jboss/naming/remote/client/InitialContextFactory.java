@@ -45,6 +45,7 @@ import javax.security.sasl.RealmCallback;
 import javax.xml.bind.DatatypeConverter;
 
 import org.jboss.logging.Logger;
+import org.jboss.naming.remote.client.ejb.EJBClientHandler;
 import org.jboss.naming.remote.protocol.IoFutureHelper;
 import org.jboss.remoting3.Channel;
 import org.jboss.remoting3.Connection;
@@ -61,6 +62,8 @@ import static org.jboss.naming.remote.client.ClientUtil.namingException;
  */
 public class InitialContextFactory implements javax.naming.spi.InitialContextFactory {
     private static final Logger logger = Logger.getLogger(InitialContextFactory.class);
+
+    private static final String REMOTE_NAMING_EJB_CLIENT_HANDLER_CLASS_NAME = "org.jboss.naming.remote.client.ejb.RemoteNamingStoreEJBClientHandler";
 
     public static final String ENDPOINT = "jboss.naming.client.endpoint";
     public static final String CONNECTION = "jboss.naming.client.connection";
@@ -98,40 +101,32 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
     private static final CacheShutdown CACHE_SHUTDOWN = new CacheShutdown(NAMING_STORE_CACHE, ENDPOINT_CACHE);
 
     /**
-     * Cached class and methods used by the ejb client context integration. Will be null if the ejb client lib
+     * Cached class used by the ejb client context integration. Will be null if the ejb client lib
      * is not on the class path
      */
-    private static final Class<?> selectorClass;
-    private static final Method clearMethod;
-    private static final Method setCurrentMethod;
+    private static final Class<?> remoteNamingEJBClientHandlerClass;
+    private static final Method setupEJBClientContextMethod;
 
 
     static {
         CACHE_SHUTDOWN.registerShutdownHandler();
 
         final ClassLoader classLoader = InitialContextFactory.class.getClassLoader();
-        Class<?> sel = null;
-        Method setup = null;
-        Method clear = null;
-        Method setCurrent = null;
+        Class klass = null;
+        Method method = null;
         try {
-            sel = classLoader.loadClass("org.jboss.naming.remote.client.ejb.RemoteNamingEjbClientContextSelector");
-            setup = sel.getDeclaredMethod("setupSelector");
-            clear = sel.getDeclaredMethod("clearSelector");
-            setCurrent = sel.getDeclaredMethod("setCurrent", CurrentEjbClientConnection.class);
-        } catch (Exception e) {
-            logger.debugf("EJB client library is not on the class path, ejb client integration will not be available", e);
+            klass = classLoader.loadClass(REMOTE_NAMING_EJB_CLIENT_HANDLER_CLASS_NAME);
+            method = klass.getMethod("setupEJBClientContext", new Class<?>[] {List.class});
+        } catch (Throwable t) {
+            logger.warn("EJB client integration will not be available due to a problem setting up the EJB client handler", t);
         }
-        selectorClass = sel;
-        clearMethod = clear;
-        setCurrentMethod = setCurrent;
+        remoteNamingEJBClientHandlerClass = klass;
+        setupEJBClientContextMethod = method;
     }
 
     @SuppressWarnings("unchecked")
     public Context getInitialContext(final Hashtable<?, ?> env) throws NamingException {
         try {
-            final List<RemoteContext.CloseTask> closeTasks = new ArrayList<RemoteContext.CloseTask>();
-            RemoteNamingStore namingStore = getOrCreateNamingStore((Hashtable<String, Object>) env, findAndCreateClientProperties(env), OptionMap.EMPTY, 5000, closeTasks);
             final Object setupEJBClientContextProp = env.get(InitialContextFactory.SETUP_EJB_CONTEXT);
             final Boolean setupEJBClientContext;
             if (setupEJBClientContextProp instanceof String) {
@@ -141,10 +136,16 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             } else {
                 setupEJBClientContext = Boolean.FALSE;
             }
+            final List<RemoteContext.CloseTask> closeTasks = new ArrayList<RemoteContext.CloseTask>();
+            final EJBClientHandler ejbClientHandler;
             if (setupEJBClientContext) {
-                setupEjbContext(namingStore, closeTasks);
+                ejbClientHandler = this.setupEJBClientContext(closeTasks);
+            } else {
+                ejbClientHandler = null;
             }
+            final RemoteNamingStore namingStore = getOrCreateNamingStore((Hashtable<String, Object>) env, findAndCreateClientProperties(env), OptionMap.EMPTY, 5000, closeTasks, ejbClientHandler);
             return new RemoteContext(namingStore, (Hashtable<String, Object>) env, closeTasks);
+
         } catch (NamingException e) {
             throw e;
         } catch (Throwable t) {
@@ -153,7 +154,8 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
     }
 
     private RemoteNamingStore getOrCreateNamingStore(final Hashtable<String, Object> env, final Properties clientProperties,
-                                                     final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final List<RemoteContext.CloseTask> closeTasks) throws IOException, NamingException, URISyntaxException {
+                                                     final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis,
+                                                     final List<RemoteContext.CloseTask> closeTasks, final EJBClientHandler ejbClientHandler) throws IOException, NamingException, URISyntaxException {
 
         final Channel channel;
         if (env.containsKey(CONNECTION)) {
@@ -162,16 +164,17 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             final IoFuture<Channel> futureChannel = connection.openChannel("naming", channelCreationOptions);
             channel = IoFutureHelper.get(futureChannel, channelCreationTimeoutInMillis, TimeUnit.MILLISECONDS);
 
-            return RemoteContextFactory.createVersionedStore(channel);
+            return RemoteContextFactory.createVersionedStore(channel, ejbClientHandler);
 
         } else {
             final Endpoint endpoint = getOrCreateEndpoint(env, clientProperties, closeTasks);
-            return getOrCreateCachedNamingStore(endpoint, clientProperties, closeTasks, channelCreationOptions, channelCreationTimeoutInMillis, env);
+            return getOrCreateCachedNamingStore(endpoint, clientProperties, closeTasks, channelCreationOptions, channelCreationTimeoutInMillis, env, ejbClientHandler);
         }
     }
 
     private RemoteNamingStore getOrCreateCachedNamingStore(final Endpoint clientEndpoint, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks,
-                                                           final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final Hashtable<String, Object> env) throws IOException, URISyntaxException, NamingException {
+                                                           final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final Hashtable<String, Object> env,
+                                                           final EJBClientHandler ejbClientHandler) throws IOException, URISyntaxException, NamingException {
         // get connect options for the connection
         final OptionMap connectOptionsFromConfiguration = this.getOptionMapFromProperties(clientProperties, CONNECT_OPTIONS_PREFIX);
         // merge with defaults
@@ -193,7 +196,7 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             throw new NamingException("No provider URL configured for connection");
         }
         boolean randomServer = Boolean.getBoolean(RANDOM_SERVER);
-        return NAMING_STORE_CACHE.getRemoteNamingStore(clientEndpoint, connectionUrl, connectOptions, callbackHandler, connectionTimeout, channelCreationOptions, channelCreationTimeoutInMillis, closeTasks, randomServer);
+        return NAMING_STORE_CACHE.getRemoteNamingStore(clientEndpoint, connectionUrl, connectOptions, callbackHandler, connectionTimeout, channelCreationOptions, channelCreationTimeoutInMillis, closeTasks, randomServer, ejbClientHandler);
     }
 
     private Endpoint getOrCreateEndpoint(final Hashtable<String, Object> env, final Properties clientProperties, final List<RemoteContext.CloseTask> closeTasks) throws IOException {
@@ -435,37 +438,18 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         }
     }
 
-    /*
-       Temporary hack to allow remote ejbs to share the remote connection used by naming.
-    */
-    private static void setupEjbContext(final RemoteNamingStore namingStore, final List<RemoteContext.CloseTask> closeTasks) {
-        try {
-            //first do the static setup
-            if (remoteContextSelector == null) {
-                synchronized (InitialContextFactory.class) {
-                    if (remoteContextSelector == null) {
-                        final Method setup = selectorClass.getMethod("setupSelector");
-                        remoteContextSelector = setup.invoke(null);
-                    }
-                }
-            }
-            //setup the context selector
-            final CurrentEjbClientConnection connection = new CurrentEjbClientConnection();
-            namingStore.addEjbContext(connection);
-            setCurrentMethod.invoke(remoteContextSelector, connection);
-
-            closeTasks.add(new RemoteContext.CloseTask() {
-                public void close(final boolean isFinalize) {
-                    try {
-                        namingStore.removeEjbContext(connection);
-                        clearMethod.invoke(remoteContextSelector);
-                    } catch (Throwable t) {
-                        throw new RuntimeException("Failed to reset EJB remote context", t);
-                    }
-                }
-            });
-        } catch (Throwable t) {
-            throw new RuntimeException("Failed to setup EJB remote context", t);
+    private EJBClientHandler setupEJBClientContext(final List<RemoteContext.CloseTask> closeTasks) {
+        if (remoteNamingEJBClientHandlerClass == null || setupEJBClientContextMethod == null) {
+            logger.warn("EJB client integration is disabled because the EJB client handler class not available for remote naming");
+            return null;
         }
+        try {
+            final Object handler = setupEJBClientContextMethod.invoke(null, closeTasks);
+            return (EJBClientHandler) handler;
+        } catch (Throwable t) {
+            logger.warn("EJB client integration will not be available due to a problem setting up the client context", t);
+        }
+        return null;
     }
+
 }

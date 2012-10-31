@@ -1,6 +1,7 @@
 package org.jboss.naming.remote.client;
 
 import org.jboss.logging.Logger;
+import org.jboss.naming.remote.client.ejb.EJBClientHandler;
 import org.jboss.naming.remote.protocol.IoFutureHelper;
 import org.jboss.naming.remote.protocol.NamingIOException;
 import org.jboss.remoting3.Channel;
@@ -19,10 +20,8 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -46,10 +45,7 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
      */
     private volatile int nextServer;
     private volatile RemoteNamingStore currentNamingStore;
-    /**
-     * The list of client contexts that are using this naming stores connection.
-     */
-    private final Set<CurrentEjbClientConnection> currentEjbClientContexts = new HashSet<CurrentEjbClientConnection>();
+    private final EJBClientHandler ejbClientHandler;
     //should only be accessed under lock
     private Connection connection;
 
@@ -65,6 +61,21 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
      *                                       <code>connectionURIs</code> for establishing the first connection
      */
     public HaRemoteNamingStore(final long channelCreationTimeoutInMillis, final OptionMap channelCreationOptions, final long connectionTimeout, final CallbackHandler callbackHandler, final OptionMap connectOptions, final List<URI> connectionURIs, final Endpoint clientEndpoint, final boolean randomServer) {
+        this(channelCreationTimeoutInMillis, channelCreationOptions, connectionTimeout, callbackHandler, connectOptions, connectionURIs, clientEndpoint, randomServer, null);
+    }
+
+    /**
+     * @param channelCreationTimeoutInMillis The channel creation timeout in milli sec
+     * @param channelCreationOptions         The channel creation options
+     * @param connectionTimeout              The connection creation timeout in milli sec
+     * @param callbackHandler                The callback handler
+     * @param connectOptions                 The connection creation options
+     * @param connectionURIs                 The connection URIs
+     * @param clientEndpoint                 The client Endpoint
+     * @param randomServer                   True if a random connection URI has to be picked, from among the passed
+     *                                       <code>connectionURIs</code> for establishing the first connection
+     */
+    HaRemoteNamingStore(final long channelCreationTimeoutInMillis, final OptionMap channelCreationOptions, final long connectionTimeout, final CallbackHandler callbackHandler, final OptionMap connectOptions, final List<URI> connectionURIs, final Endpoint clientEndpoint, final boolean randomServer, final EJBClientHandler ejbClientHandler) {
         if (connectionURIs.isEmpty()) {
             throw new IllegalArgumentException("Cannot create a HA remote naming store without any servers to connect to");
         }
@@ -78,6 +89,7 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
         } else {
             nextServer = 0;
         }
+        this.ejbClientHandler = ejbClientHandler;
     }
 
     /**
@@ -95,6 +107,7 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
         } else {
             nextServer = 0;
         }
+        this.ejbClientHandler = null;
     }
 
 
@@ -181,7 +194,7 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
                 // open a channel
                 final IoFuture<Channel> futureChannel = connection.openChannel("naming", connectionInfo.getChannelCreationOptions());
                 final Channel channel = IoFutureHelper.get(futureChannel, connectionInfo.getChannelCreationTimeout(), TimeUnit.MILLISECONDS);
-                store = RemoteContextFactory.createVersionedStore(channel);
+                store = RemoteContextFactory.createVersionedStore(channel, ejbClientHandler);
                 this.connection = connection;
                 break;
             } catch (Exception e) {
@@ -200,8 +213,13 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
             throw new NamingException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);
         }
         this.currentNamingStore = store;
-        for (final CurrentEjbClientConnection currentEjbClientContext : currentEjbClientContexts) {
-            currentEjbClientContext.setConnection(connection);
+        // associate this connection with the EJB client context
+        if (this.ejbClientHandler != null) {
+            try {
+                this.ejbClientHandler.associate(connection);
+            } catch (Exception e) {
+                logger.warn("Could not associate connection " + connection + " with EJB client context", e);
+            }
         }
         return store;
     }
@@ -370,15 +388,12 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
 
     @Override
     public synchronized void addEjbContext(final CurrentEjbClientConnection connection) {
-        if (this.connection != null) {
-            connection.setConnection(this.connection);
-        }
-        this.currentEjbClientContexts.add(connection);
+        // no-op. CurrentEjbClientConnection is a deprecated semantic. We no longer do anything with it
     }
 
     @Override
     public synchronized void removeEjbContext(final CurrentEjbClientConnection connection) {
-        this.currentEjbClientContexts.remove(connection);
+        // no-op. CurrentEjbClientConnection is a deprecated semantic. We no longer do anything with it
     }
 
     /**

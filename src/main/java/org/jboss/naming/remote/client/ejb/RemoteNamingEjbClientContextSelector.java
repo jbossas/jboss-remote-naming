@@ -11,7 +11,10 @@ import java.util.IdentityHashMap;
 
 /**
  * @author John Bailey
+ * @deprecated Since 1.0.6.Final - remote-naming no longer switches EJB client context selector for providing
+ *              EJB invocation support. Instead we use {@link EJBClientHandler} to handle EJB integration in remote-naming
  */
+@Deprecated
 public class RemoteNamingEjbClientContextSelector implements ContextSelector<EJBClientContext> {
 
     private ContextSelector<EJBClientContext> delegate;

@@ -22,6 +22,8 @@
 package org.jboss.naming.remote.protocol;
 
 import java.io.IOException;
+
+import org.jboss.naming.remote.client.ejb.EJBClientHandler;
 import org.jboss.naming.remote.server.RemoteNamingServer;
 import org.jboss.naming.remote.server.RemoteNamingService;
 import org.jboss.naming.remote.client.RemoteNamingStore;
@@ -45,8 +47,12 @@ public class Versions {
     }
 
     public static RemoteNamingStore getRemoteNamingStore(final byte version, final Channel channel) throws IOException {
+        return  getRemoteNamingStore(version, channel, null);
+    }
+
+    public static RemoteNamingStore getRemoteNamingStore(final byte version, final Channel channel, final EJBClientHandler ejbClientHandler) throws IOException {
         if (version == VersionOne.getVersionIdentifier()) {
-            return VersionOne.getRemoteNamingStore(channel);
+            return VersionOne.getRemoteNamingStore(channel, ejbClientHandler);
         }
 
         throw new IllegalArgumentException("Unsupported protocol version [" + version + "]");

@@ -24,8 +24,10 @@ package org.jboss.naming.remote.protocol.v1;
 import org.jboss.logging.Logger;
 import org.jboss.naming.remote.client.CurrentEjbClientConnection;
 import org.jboss.naming.remote.client.RemoteNamingStore;
+import org.jboss.naming.remote.client.ejb.EJBClientHandler;
 import org.jboss.naming.remote.protocol.ProtocolCommand;
 import org.jboss.remoting3.Channel;
+import org.jboss.remoting3.Connection;
 import org.jboss.remoting3.MessageInputStream;
 import org.xnio.IoUtils;
 
@@ -54,9 +56,24 @@ public class RemoteNamingStoreV1 implements RemoteNamingStore {
 
     private final ExecutorService executor = Executors.newCachedThreadPool(new DaemonThreadFactory());
     private final Channel channel;
+    private final EJBClientHandler ejbClientHandler;
 
     public RemoteNamingStoreV1(final Channel channel) {
+        this(channel, null);
+    }
+
+    public RemoteNamingStoreV1(final Channel channel, final EJBClientHandler ejbClientHandler) {
         this.channel = channel;
+        this.ejbClientHandler = ejbClientHandler;
+        if (this.ejbClientHandler != null) {
+            final Connection connection = channel.getConnection();
+            try {
+                this.ejbClientHandler.associate(connection);
+            } catch (Exception e) {
+                log.warn("Could not associate connection " + connection + " with EJB client context", e);
+            }
+
+        }
     }
 
     void start() throws IOException {
@@ -75,7 +92,12 @@ public class RemoteNamingStoreV1 implements RemoteNamingStore {
 
     public Object lookup(final Name name) throws NamingException {
         try {
-            return Protocol.LOOKUP.execute(channel, name);
+            Object obj = Protocol.LOOKUP.execute(channel, name);
+            // give the EJB client handler a chance to handle a possible EJB proxy instance returned by the lookup.
+            if (this.ejbClientHandler != null) {
+                obj = this.ejbClientHandler.handleLookupReturnInstance(obj);
+            }
+            return obj;
         } catch (IOException e) {
             throw namingException("Failed to execute lookup for [" + name + "]", e);
         }
@@ -186,7 +208,7 @@ public class RemoteNamingStoreV1 implements RemoteNamingStore {
 
     @Override
     public void addEjbContext(final CurrentEjbClientConnection connection) {
-        connection.setConnection(channel.getConnection());
+        // no-op. CurrentEjbClientConnection is a deprecated semantic. We no longer do anything with it
     }
 
     @Override

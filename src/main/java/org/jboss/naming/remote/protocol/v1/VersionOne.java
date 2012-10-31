@@ -22,6 +22,8 @@
 package org.jboss.naming.remote.protocol.v1;
 
 import java.io.IOException;
+
+import org.jboss.naming.remote.client.ejb.EJBClientHandler;
 import org.jboss.naming.remote.server.RemoteNamingServer;
 import org.jboss.naming.remote.server.RemoteNamingService;
 import org.jboss.remoting3.Channel;
@@ -41,10 +43,15 @@ public class VersionOne {
     }
 
     public static RemoteNamingStoreV1 getRemoteNamingStore(final Channel channel) throws IOException {
-        final RemoteNamingStoreV1 context = new RemoteNamingStoreV1(channel);
+        return getRemoteNamingStore(channel, null);
+    }
+
+    public static RemoteNamingStoreV1 getRemoteNamingStore(final Channel channel, final EJBClientHandler ejbClientHandler) throws IOException {
+        final RemoteNamingStoreV1 context = new RemoteNamingStoreV1(channel, ejbClientHandler);
         context.start();
         return context;
     }
+
 
     public static RemoteNamingServer getNamingServer(final Channel channel, final RemoteNamingService remoteNamingServer) {
         final RemoteNamingServerV1 server = new RemoteNamingServerV1(channel, remoteNamingServer);

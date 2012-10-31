@@ -21,28 +21,8 @@
  */
 package org.jboss.naming.remote;
 
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.net.URI;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-
-import javax.naming.Binding;
-import javax.naming.Context;
-import javax.naming.InitialContext;
-import javax.naming.LinkRef;
-import javax.naming.NameClassPair;
-import javax.naming.NameNotFoundException;
-import javax.naming.NamingEnumeration;
-
-import org.jboss.ejb.client.ContextSelector;
-import org.jboss.ejb.client.EJBClientContext;
 import org.jboss.naming.remote.client.InitialContextFactory;
 import org.jboss.naming.remote.client.RemoteContext;
-import org.jboss.naming.remote.client.ejb.RemoteNamingEjbClientContextSelector;
 import org.jboss.naming.remote.protocol.IoFutureHelper;
 import org.jboss.naming.remote.server.RemoteNamingService;
 import org.jboss.remoting3.Connection;
@@ -57,6 +37,22 @@ import org.xnio.IoFuture;
 import org.xnio.OptionMap;
 import org.xnio.Options;
 import org.xnio.Xnio;
+
+import javax.naming.Binding;
+import javax.naming.Context;
+import javax.naming.InitialContext;
+import javax.naming.LinkRef;
+import javax.naming.NameClassPair;
+import javax.naming.NameNotFoundException;
+import javax.naming.NamingEnumeration;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -396,36 +392,5 @@ public class ClientConnectionTest {
         localContext.unbind("test");
 
         endpoint.close();
-    }
-
-    @Test
-    public void testSetupEjb() throws Exception {
-        final Xnio xnio = Xnio.getInstance();
-        final Endpoint endpoint = Remoting.createEndpoint("RemoteNaming", xnio, OptionMap.EMPTY);
-        endpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), OptionMap.create(SSL_ENABLED, false));
-
-        final IoFuture<Connection> futureConnection = endpoint.connect(new URI("remote://localhost:7999"), OptionMap.create(Options.SASL_POLICY_NOANONYMOUS, false), new TestUtils.AnonymousCallbackHandler());
-        final Connection connection = IoFutureHelper.get(futureConnection, 1000, TimeUnit.MILLISECONDS);
-
-        final ContextSelector<EJBClientContext> temp = new MockSelector();
-
-        final ContextSelector<EJBClientContext> original = EJBClientContext.setSelector(temp);
-
-        final Properties env = new Properties();
-        env.put(Context.INITIAL_CONTEXT_FACTORY, org.jboss.naming.remote.client.InitialContextFactory.class.getName());
-        env.put(InitialContextFactory.CONNECTION, connection);
-        env.put(InitialContextFactory.SETUP_EJB_CONTEXT, true);
-        final Context context = new InitialContext(env);
-
-        final ContextSelector<EJBClientContext> newSelector = EJBClientContext.setSelector(new MockSelector());
-        assertTrue(newSelector instanceof RemoteNamingEjbClientContextSelector);
-        context.close();
-    }
-
-
-    private class MockSelector implements ContextSelector<EJBClientContext> {
-        public EJBClientContext getCurrent() {
-            return null;
-        }
     }
 }
