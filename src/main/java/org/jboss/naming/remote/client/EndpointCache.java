@@ -22,10 +22,12 @@ import org.jboss.remoting3.Registration;
 import org.jboss.remoting3.Remoting;
 import org.jboss.remoting3.ServiceRegistrationException;
 import org.jboss.remoting3.UnknownURISchemeException;
+import org.jboss.remoting3.remote.HttpUpgradeConnectionProviderFactory;
 import org.jboss.remoting3.remote.RemoteConnectionProviderFactory;
 import org.jboss.remoting3.spi.ConnectionProviderFactory;
 import org.xnio.IoFuture;
 import org.xnio.OptionMap;
+import org.xnio.Options;
 import org.xnio.XnioWorker;
 import org.xnio.ssl.XnioSsl;
 
@@ -43,6 +45,9 @@ public class EndpointCache {
         if (cacheEntry == null) {
             final Endpoint endpoint = Remoting.createEndpoint(endpointName, endPointCreationOptions);
             endpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), remoteConnectionProviderOptions);
+            endpoint.addConnectionProvider("http-remoting", new HttpUpgradeConnectionProviderFactory(), OptionMap.builder().addAll(remoteConnectionProviderOptions).set(Options.SSL_ENABLED, Boolean.FALSE).getMap());
+            endpoint.addConnectionProvider("https-remoting", new HttpUpgradeConnectionProviderFactory(), OptionMap.builder().addAll(remoteConnectionProviderOptions).set(Options.SSL_ENABLED, Boolean.TRUE).getMap());
+
             cacheEntry = new CacheEntry(endpoint, new EndpointWrapper(endpointHash, endpoint));
             cache.putIfAbsent(endpointHash, cacheEntry);
         }
