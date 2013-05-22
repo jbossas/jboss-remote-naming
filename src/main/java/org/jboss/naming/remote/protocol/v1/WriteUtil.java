@@ -117,6 +117,16 @@ class WriteUtil {
                 final int byteToWrite = b & 0xff;
                 dataOutput.write(byteToWrite);
             }
+
+            @Override
+            public void write(final byte[] b) throws IOException {
+                dataOutput.write(b);
+            }
+
+            @Override
+            public void write(final byte[] b, final int off, final int len) throws IOException {
+                dataOutput.write(b, off, len);
+            }
         };
         final ByteOutput byteOutput = Marshalling.createByteOutput(outputStream);
         // start the marshaller
