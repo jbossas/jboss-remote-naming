@@ -417,6 +417,7 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             }
         }
 
+        @Override
         public boolean equals(Object o) {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
@@ -430,6 +431,7 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             return true;
         }
 
+        @Override
         public int hashCode() {
             int result = realm != null ? realm.hashCode() : 0;
             result = 31 * result + (username != null ? username.hashCode() : 0);
