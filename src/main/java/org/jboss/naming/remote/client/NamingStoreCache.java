@@ -1,13 +1,5 @@
 package org.jboss.naming.remote.client;
 
-import org.jboss.logging.Logger;
-import org.jboss.naming.remote.client.ejb.EJBClientHandler;
-import org.jboss.remoting3.Channel;
-import org.jboss.remoting3.Endpoint;
-import org.xnio.OptionMap;
-
-import javax.naming.NamingException;
-import javax.security.auth.callback.CallbackHandler;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
@@ -19,6 +11,15 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import javax.naming.NamingException;
+import javax.security.auth.callback.CallbackHandler;
+
+import org.jboss.logging.Logger;
+import org.jboss.naming.remote.client.ejb.EJBClientHandler;
+import org.jboss.remoting3.Channel;
+import org.jboss.remoting3.Endpoint;
+import org.xnio.OptionMap;
 
 /**
  * @author John Bailey
@@ -69,7 +70,7 @@ public class NamingStoreCache {
     public synchronized RemoteNamingStore getRemoteNamingStore(final Endpoint clientEndpoint, final String connectionURL, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout,
                                                                final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final List<RemoteContext.CloseTask> contextCloseTasks, boolean randomServer,
                                                                final EJBClientHandler ejbClientHandler) throws IOException, NamingException, URISyntaxException {
-        final CacheKey key = new CacheKey(clientEndpoint, callbackHandler.getClass(), connectOptions, connectionURL);
+        final CacheKey key = new CacheKey(clientEndpoint, callbackHandler, connectOptions, connectionURL);
         CacheEntry cacheEntry = cache.get(key);
         if (cacheEntry == null) {
             RemoteNamingStore store;
@@ -147,11 +148,11 @@ public class NamingStoreCache {
         final Endpoint endpoint;
         final String destination;
         final OptionMap connectOptions;
-        final Class<?> callbackHandlerClass;
+        final CallbackHandler callbackHandler;
 
-        private CacheKey(final Endpoint endpoint, final Class<?> callbackHandlerClass, final OptionMap connectOptions, final String destination) {
+        private CacheKey(final Endpoint endpoint, final CallbackHandler callbackHandler, final OptionMap connectOptions, final String destination) {
             this.endpoint = endpoint;
-            this.callbackHandlerClass = callbackHandlerClass;
+            this.callbackHandler = callbackHandler;
             this.connectOptions = connectOptions;
             this.destination = destination;
         }
@@ -163,7 +164,7 @@ public class NamingStoreCache {
 
             CacheKey cacheKey = (CacheKey) o;
 
-            if (callbackHandlerClass != null ? !callbackHandlerClass.equals(cacheKey.callbackHandlerClass) : cacheKey.callbackHandlerClass != null)
+            if (callbackHandler != null ? !callbackHandler.equals(cacheKey.callbackHandler) : cacheKey.callbackHandler != null)
                 return false;
             if (connectOptions != null ? !connectOptions.equals(cacheKey.connectOptions) : cacheKey.connectOptions != null)
                 return false;
@@ -179,7 +180,7 @@ public class NamingStoreCache {
             int result = endpoint != null ? endpoint.hashCode() : 0;
             result = 31 * result + (destination != null ? destination.hashCode() : 0);
             result = 31 * result + (connectOptions != null ? connectOptions.hashCode() : 0);
-            result = 31 * result + (callbackHandlerClass != null ? callbackHandlerClass.hashCode() : 0);
+            result = 31 * result + (callbackHandler != null ? callbackHandler.hashCode() : 0);
             return result;
         }
     }
