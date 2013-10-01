@@ -23,11 +23,15 @@
 package org.jboss.naming.remote.protocol;
 
 import java.io.IOException;
+import java.net.ConnectException;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+
+import javax.security.sasl.SaslException;
+
 import org.xnio.IoFuture;
 
 public class IoFutureHelper {
@@ -84,8 +88,15 @@ public class IoFutureHelper {
             case DONE:
                 return ioFuture.get();
             case FAILED:
+            	// SaslException is an IOException, which indicates a security or authentication issue, maybe should throw AuthenticationException
+            	if(ioFuture.getException() instanceof SaslException)
+            		throw ioFuture.getException();
+            	// if it is not a SaslException wrap it in a RuntimeException, should we just wrap it in an IOException ?
                 throw new RuntimeException(ioFuture.getException());
+            case WAITING:
+            	throw new ConnectException("Operation failed with status " + status + " after " + timeout + " " + unit);
         }
+        // Should we wrap it in an IOException, since we are already throwing it?
         throw new RuntimeException("Operation failed with status " + status);
     }
 }
