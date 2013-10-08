@@ -39,6 +39,16 @@ public class TestUtils {
         return builder.getMap();
     }
 
+    public static OptionMap createOptionNoAuthMechanismMap() {
+        OptionMap.Builder builder = OptionMap.builder();
+        builder.set(SSL_ENABLED, false);
+        builder.set(SASL_MECHANISMS, Sequence.<String>of("null"));
+        builder.set(SASL_PROPERTIES, Sequence.<Property>empty());
+        builder.set(SASL_POLICY_NOANONYMOUS, false);
+
+        return builder.getMap();
+    }
+    
     public static class DefaultAuthenticationHandler implements ServerAuthenticationProvider {
         @Override
         public AuthorizingCallbackHandler getCallbackHandler(String mechanismName) {
