@@ -241,7 +241,7 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
                 ne.initCause(primaryException);
                 throw ne;
             }
-            throw new NamingException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);
+            throw new CommunicationException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);
         }
         this.currentNamingStore = store;
         // associate this connection with the EJB client context
