@@ -28,6 +28,7 @@ import org.jboss.remoting3.spi.ConnectionProviderFactory;
 import org.xnio.IoFuture;
 import org.xnio.OptionMap;
 import org.xnio.Options;
+import org.xnio.Xnio;
 import org.xnio.XnioWorker;
 import org.xnio.ssl.XnioSsl;
 
@@ -43,7 +44,7 @@ public class EndpointCache {
         final CacheKey endpointHash = new CacheKey(remoteConnectionProviderOptions, endPointCreationOptions, endpointName);
         CacheEntry cacheEntry = cache.get(endpointHash);
         if (cacheEntry == null) {
-            final Endpoint endpoint = Remoting.createEndpoint(endpointName, endPointCreationOptions);
+            final Endpoint endpoint = Remoting.createEndpoint(endpointName, Xnio.getInstance(), endPointCreationOptions);
             endpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), remoteConnectionProviderOptions);
             endpoint.addConnectionProvider("http-remoting", new HttpUpgradeConnectionProviderFactory(), OptionMap.builder().addAll(remoteConnectionProviderOptions).set(Options.SSL_ENABLED, Boolean.FALSE).getMap());
             endpoint.addConnectionProvider("https-remoting", new HttpUpgradeConnectionProviderFactory(), OptionMap.builder().addAll(remoteConnectionProviderOptions).set(Options.SSL_ENABLED, Boolean.TRUE).getMap());
