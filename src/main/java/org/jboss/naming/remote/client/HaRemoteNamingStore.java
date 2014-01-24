@@ -207,19 +207,20 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
 
                 // save server attempt and cause of failure               
                 if(e instanceof SaslException) {
-                	primaryException = e;                	
-                } else if(e instanceof ConnectException) {
-                	if(primaryException == null && !(primaryException instanceof AuthenticationException)) {
-                		primaryException = e;                		
-                	}
+                    primaryException = e;
+                } else if (e instanceof ConnectException) {
+                    if (primaryException == null && !(primaryException instanceof AuthenticationException)) {
+                        primaryException = e;
+                    }
                 }
-                
+
                 // add failure messages to be used in final exception
-                if(connectionUri == null)
-                	attemptedConnectionURIs.add("null (" + e.getMessage() + ")");
-                else
-                	attemptedConnectionURIs.add(connectionUri.toString() + " (" + e.getMessage() + ")");              
-                
+                if (connectionUri == null) {
+                    attemptedConnectionURIs.add("null (" + e.getMessage() + ")");
+                } else {
+                    attemptedConnectionURIs.add(connectionUri.toString() + " (" + e.getMessage() + ")");
+                }
+
                 currentServer = nextServer();
                 if (connection != null) {
                     try {
@@ -231,15 +232,15 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
             }
         } while (currentServer != startingNext);
         if (store == null) {
-        	if(primaryException != null) {
-        		NamingException ne;
-        		if(primaryException instanceof SaslException)
-        			ne = new AuthenticationException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);
-        		else        			
-        			ne = new CommunicationException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);        		
-        		ne.initCause(primaryException);
-        		throw ne;
-        	}
+            if (primaryException != null) {
+                NamingException ne;
+                if (primaryException instanceof SaslException)
+                    ne = new AuthenticationException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);
+                else
+                    ne = new CommunicationException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);
+                ne.initCause(primaryException);
+                throw ne;
+            }
             throw new NamingException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);
         }
         this.currentNamingStore = store;
