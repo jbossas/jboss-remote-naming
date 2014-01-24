@@ -26,15 +26,15 @@ import org.jboss.ejb.client.Affinity;
 import org.jboss.ejb.client.EJBLocator;
 import org.jboss.ejb.client.SessionID;
 import org.jboss.ejb.client.remoting.PackedInteger;
-import org.jboss.ejb.client.remoting.ProtocolV1ClassTable;
-import org.jboss.ejb.client.remoting.ProtocolV1ObjectTable;
 import org.jboss.marshalling.AbstractClassResolver;
 import org.jboss.marshalling.ByteInput;
 import org.jboss.marshalling.ByteOutput;
+import org.jboss.marshalling.ClassTable;
 import org.jboss.marshalling.Marshaller;
 import org.jboss.marshalling.MarshallerFactory;
 import org.jboss.marshalling.Marshalling;
 import org.jboss.marshalling.MarshallingConfiguration;
+import org.jboss.marshalling.ObjectTable;
 import org.jboss.marshalling.Unmarshaller;
 
 import java.io.DataInput;
@@ -45,6 +45,7 @@ import java.io.InputStream;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.io.OutputStream;
+import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -67,6 +68,29 @@ public class DummyProtocolHandler {
     private static final byte HEADER_NO_SUCH_EJB_FAILURE = 0x0A;
     private static final byte HEADER_INVOCATION_EXCEPTION = 0x06;
     private static final byte HEADER_ASYNC_METHOD_NOTIFICATION = 0x0E;
+
+    private static final ClassTable PROTO_CLASS_TABLE;
+    private static final ObjectTable PROTO_OBJECT_TABLE;
+
+    private static Field accessible(Field field) {
+        field.setAccessible(true);
+        return field;
+    }
+
+    static {
+        try {
+            Class<? extends ClassTable> pct = Class.forName("org.jboss.ejb.client.remoting.ProtocolV1ClassTable", false, PackedInteger.class.getClassLoader()).asSubclass(ClassTable.class);
+            Class<? extends ObjectTable> pot = Class.forName("org.jboss.ejb.client.remoting.ProtocolV1ObjectTable", false, PackedInteger.class.getClassLoader()).asSubclass(ObjectTable.class);
+            PROTO_CLASS_TABLE = pct.cast(accessible(pct.getDeclaredField("INSTANCE")).get(null));
+            PROTO_OBJECT_TABLE = pot.cast(accessible(pot.getDeclaredField("INSTANCE")).get(null));
+        } catch (ClassNotFoundException e) {
+            throw new NoClassDefFoundError(e.getMessage());
+        } catch (NoSuchFieldException e) {
+            throw new NoSuchFieldError(e.getMessage());
+        } catch (IllegalAccessException e) {
+            throw new IllegalAccessError(e.getMessage());
+        }
+    }
 
     public DummyProtocolHandler(final String marshallerType) {
         this.marshallerFactory = Marshalling.getProvidedMarshallerFactory(marshallerType);
@@ -269,8 +293,8 @@ public class DummyProtocolHandler {
      */
     private Marshaller getMarshaller() throws IOException {
         final MarshallingConfiguration marshallingConfiguration = new MarshallingConfiguration();
-        marshallingConfiguration.setClassTable(ProtocolV1ClassTable.INSTANCE);
-        marshallingConfiguration.setObjectTable(ProtocolV1ObjectTable.INSTANCE);
+        marshallingConfiguration.setClassTable(PROTO_CLASS_TABLE);
+        marshallingConfiguration.setObjectTable(PROTO_OBJECT_TABLE);
         marshallingConfiguration.setVersion(2);
 
         return marshallerFactory.createMarshaller(marshallingConfiguration);
@@ -314,8 +338,8 @@ public class DummyProtocolHandler {
     private Unmarshaller getUnMarshaller() throws IOException {
         final MarshallingConfiguration marshallingConfiguration = new MarshallingConfiguration();
         marshallingConfiguration.setVersion(2);
-        marshallingConfiguration.setClassTable(ProtocolV1ClassTable.INSTANCE);
-        marshallingConfiguration.setObjectTable(ProtocolV1ObjectTable.INSTANCE);
+        marshallingConfiguration.setClassTable(PROTO_CLASS_TABLE);
+        marshallingConfiguration.setObjectTable(PROTO_OBJECT_TABLE);
         marshallingConfiguration.setClassResolver(TCCLClassResolver.INSTANCE);
 
         return marshallerFactory.createUnmarshaller(marshallingConfiguration);
