@@ -231,16 +231,16 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
             }
         } while (currentServer != startingNext);
         if (store == null) {
-        	if(primaryException != null) {
-        		NamingException ne;
-        		if(primaryException instanceof SaslException)
-        			ne = new AuthenticationException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);
-        		else        			
-        			ne = new CommunicationException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);        		
-        		ne.initCause(primaryException);
-        		throw ne;
-        	}
-            throw new NamingException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);
+            if (primaryException != null) {
+                NamingException ne;
+                if (primaryException instanceof SaslException)
+                    ne = new AuthenticationException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);
+                else
+                    ne = new CommunicationException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);
+                ne.initCause(primaryException);
+                throw ne;
+            }
+            throw new CommunicationException("Failed to connect to any server. Servers tried: " + attemptedConnectionURIs);
         }
         this.currentNamingStore = store;
         // associate this connection with the EJB client context
