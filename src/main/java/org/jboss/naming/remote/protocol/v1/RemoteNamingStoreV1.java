@@ -259,7 +259,8 @@ public class RemoteNamingStoreV1 implements RemoteNamingStore {
         }
 
         public void handleEnd(final Channel channel) {
-            log.errorf("Channel end notification received, closing channel %s", channel);
+            // WFLY-3201 - log at debug since this is not an error
+            log.debugf("Channel end notification received, closing channel %s", channel);
             try {
                 channel.close();
             } catch (IOException ignore) {
