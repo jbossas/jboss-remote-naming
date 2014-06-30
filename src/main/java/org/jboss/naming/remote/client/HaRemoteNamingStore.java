@@ -404,7 +404,16 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
         } catch (IOException e) {
             NamingException exception = new NamingException("Failed to close connection");
             exception.initCause(e);
+            try {
+                if (currentNamingStore != null) {
+                    currentNamingStore.close();
+                }
+            } catch (NamingException ignored) {
+            }
             throw exception;
+        }
+        if (currentNamingStore != null) {
+            currentNamingStore.close();
         }
     }
 
@@ -413,6 +422,9 @@ public class HaRemoteNamingStore implements RemoteNamingStore {
         closed = true;
         if (connection != null) {
             connection.closeAsync();
+        }
+        if (currentNamingStore != null) {
+            currentNamingStore.closeAsync();
         }
     }
 
