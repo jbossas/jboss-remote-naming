@@ -28,7 +28,7 @@ public class DefaultRemoteNamingServerLogger implements RemoteNamingServerLogger
     }
 
     public void closingChannelOnChannelEnd(final Channel channel) {
-        log.errorf("Channel end notification received, closing channel %s", channel);
+        log.debugf("Channel end notification received, closing channel %s", channel);
     }
 
     public void unnexpectedError(final Throwable t) {
