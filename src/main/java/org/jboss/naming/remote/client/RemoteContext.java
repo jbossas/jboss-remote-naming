@@ -26,6 +26,8 @@ import java.util.Collections;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+
 import javax.naming.Binding;
 import javax.naming.CompositeName;
 import javax.naming.Context;
@@ -52,8 +54,15 @@ import static org.jboss.naming.remote.client.ClientUtil.namingException;
 public class RemoteContext implements Context, NameParser {
     private static final Logger log = Logger.getLogger(RemoteContext.class);
 
+    // Work around JVM's broken finalizer. All code touching these values has a purpose. Do not remove!
+    public static int STATIC_KEEP_ALIVE;
+    private static AtomicIntegerFieldUpdater<RemoteContext> keepAliveUpdater = AtomicIntegerFieldUpdater.newUpdater(RemoteContext.class, "keepAlive");
+    private volatile int keepAlive = STATIC_KEEP_ALIVE;
+
     private final Name prefix;
     private final Hashtable<String, Object> environment;
+
+    // All usage of namingStore must be surrounded with an update to keepAlive, to keep the context alive
     private final RemoteNamingStore namingStore;
 
     private final List<CloseTask> closeTasks;
@@ -80,6 +89,14 @@ public class RemoteContext implements Context, NameParser {
     }
 
     public Object lookup(final Name name) throws NamingException {
+        try {
+            return lookupInternal(name);
+        } finally {
+            keepAliveUpdater.lazySet(this, keepAlive + 1);
+        }
+    }
+
+    private Object lookupInternal(Name name) throws NamingException {
         if (isEmpty(name)) {
             return new RemoteContext(prefix, namingStore, environment);
         }
@@ -96,7 +113,7 @@ public class RemoteContext implements Context, NameParser {
         }
         return result;
     }
-  
+
     private Object getObjectInstance(final Reference reference, final Name name, final Hashtable<?, ?> environment) throws NamingException {
         try {
             final Class<?> factoryClass = Thread.currentThread().getContextClassLoader().loadClass(reference.getFactoryClassName());
@@ -130,7 +147,11 @@ public class RemoteContext implements Context, NameParser {
     }
 
     public void bind(final Name name, final Object object) throws NamingException {
-        namingStore.bind(getAbsoluteName(name), object);
+        try {
+            namingStore.bind(getAbsoluteName(name), object);
+        } finally {
+            keepAliveUpdater.lazySet(this, keepAlive + 1);
+        }
     }
 
     public void bind(final String name, final Object object) throws NamingException {
@@ -138,7 +159,11 @@ public class RemoteContext implements Context, NameParser {
     }
 
     public void rebind(final Name name, final Object object) throws NamingException {
-        namingStore.rebind(name, object);
+        try {
+            namingStore.rebind(name, object);
+        } finally {
+            keepAliveUpdater.lazySet(this, keepAlive + 1);
+        }
     }
 
     public void rebind(final String name, final Object object) throws NamingException {
@@ -146,7 +171,11 @@ public class RemoteContext implements Context, NameParser {
     }
 
     public void unbind(final Name name) throws NamingException {
-        namingStore.unbind(name);
+        try {
+            namingStore.unbind(name);
+        } finally {
+            keepAliveUpdater.lazySet(this, keepAlive + 1);
+        }
     }
 
     public void unbind(final String name) throws NamingException {
@@ -154,7 +183,11 @@ public class RemoteContext implements Context, NameParser {
     }
 
     public void rename(final Name name, final Name newName) throws NamingException {
-        namingStore.rename(name, newName);
+        try {
+            namingStore.rename(name, newName);
+        } finally {
+            keepAliveUpdater.lazySet(this, keepAlive + 1);
+        }
     }
 
     public void rename(final String name, final String newName) throws NamingException {
@@ -162,7 +195,11 @@ public class RemoteContext implements Context, NameParser {
     }
 
     public NamingEnumeration<NameClassPair> list(final Name name) throws NamingException {
-        return namingEnumeration(namingStore.list(name));
+        try {
+            return namingEnumeration(namingStore.list(name));
+        } finally {
+            keepAliveUpdater.lazySet(this, keepAlive + 1);
+        }
     }
 
     public NamingEnumeration<NameClassPair> list(final String name) throws NamingException {
@@ -170,7 +207,11 @@ public class RemoteContext implements Context, NameParser {
     }
 
     public NamingEnumeration<Binding> listBindings(final Name name) throws NamingException {
-        return namingEnumeration(namingStore.listBindings(name));
+        try {
+            return namingEnumeration(namingStore.listBindings(name));
+        } finally {
+            keepAliveUpdater.lazySet(this, keepAlive + 1);
+        }
     }
 
     public NamingEnumeration<Binding> listBindings(final String name) throws NamingException {
@@ -178,7 +219,11 @@ public class RemoteContext implements Context, NameParser {
     }
 
     public void destroySubcontext(final Name name) throws NamingException {
-        namingStore.destroySubcontext(name);
+        try {
+            namingStore.destroySubcontext(name);
+        } finally {
+            keepAliveUpdater.lazySet(this, keepAlive + 1);
+        }
     }
 
     public void destroySubcontext(final String name) throws NamingException {
@@ -186,7 +231,11 @@ public class RemoteContext implements Context, NameParser {
     }
 
     public Context createSubcontext(final Name name) throws NamingException {
-        return namingStore.createSubcontext(name);
+        try {
+            return namingStore.createSubcontext(name);
+        } finally {
+            keepAliveUpdater.lazySet(this, keepAlive + 1);
+        }
     }
 
     public Context createSubcontext(final String name) throws NamingException {
@@ -194,7 +243,11 @@ public class RemoteContext implements Context, NameParser {
     }
 
     public Object lookupLink(final Name name) throws NamingException {
-        return namingStore.lookupLink(name);
+        try {
+            return namingStore.lookupLink(name);
+        } finally {
+            keepAliveUpdater.lazySet(this, keepAlive + 1);
+        }
     }
 
     public Object lookupLink(final String name) throws NamingException {
@@ -241,6 +294,7 @@ public class RemoteContext implements Context, NameParser {
 
     public void finalize() {
         if(closed.compareAndSet(false, true)) {
+            STATIC_KEEP_ALIVE = keepAlive;
             for (CloseTask closeTask : closeTasks) {
                 closeTask.close(true);
             }
