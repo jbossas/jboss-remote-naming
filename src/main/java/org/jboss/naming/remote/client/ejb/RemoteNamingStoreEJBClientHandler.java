@@ -121,4 +121,14 @@ public class RemoteNamingStoreEJBClientHandler implements EJBClientHandler {
             }
         }
     }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if(!(obj instanceof RemoteNamingStoreEJBClientHandler)) {
+            return false;
+        }
+        RemoteNamingStoreEJBClientHandler that = (RemoteNamingStoreEJBClientHandler) obj;
+        return this.ejbClientContextIdentifier.equals(that.ejbClientContextIdentifier) && this.ejbClientContext.equals(that.ejbClientContext);
+    }
 }
