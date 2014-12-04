@@ -70,7 +70,7 @@ public class NamingStoreCache {
     public synchronized RemoteNamingStore getRemoteNamingStore(final Endpoint clientEndpoint, final String connectionURL, final OptionMap connectOptions, final CallbackHandler callbackHandler, final long connectionTimeout,
                                                                final OptionMap channelCreationOptions, final long channelCreationTimeoutInMillis, final List<RemoteContext.CloseTask> contextCloseTasks, boolean randomServer,
                                                                final EJBClientHandler ejbClientHandler) throws IOException, NamingException, URISyntaxException {
-        final CacheKey key = new CacheKey(clientEndpoint, callbackHandler, connectOptions, connectionURL);
+        final CacheKey key = new CacheKey(clientEndpoint, callbackHandler, connectOptions, connectionURL, ejbClientHandler);
         CacheEntry cacheEntry = cache.get(key);
         if (cacheEntry == null) {
             RemoteNamingStore store;
@@ -149,12 +149,14 @@ public class NamingStoreCache {
         final String destination;
         final OptionMap connectOptions;
         final CallbackHandler callbackHandler;
+        final EJBClientHandler ejbClientHandler;
 
-        private CacheKey(final Endpoint endpoint, final CallbackHandler callbackHandler, final OptionMap connectOptions, final String destination) {
+        private CacheKey(final Endpoint endpoint, final CallbackHandler callbackHandler, final OptionMap connectOptions, final String destination, final EJBClientHandler ejbClientHandler) {
             this.endpoint = endpoint;
             this.callbackHandler = callbackHandler;
             this.connectOptions = connectOptions;
             this.destination = destination;
+            this.ejbClientHandler = ejbClientHandler;
         }
 
         @Override
@@ -172,6 +174,8 @@ public class NamingStoreCache {
                 return false;
             if (endpoint != null ? !endpoint.equals(cacheKey.endpoint) : cacheKey.endpoint != null) return false;
 
+            if (ejbClientHandler != null ? !ejbClientHandler.equals(cacheKey.ejbClientHandler) : cacheKey.ejbClientHandler != null) return false;
+
             return true;
         }
 
@@ -181,6 +185,7 @@ public class NamingStoreCache {
             result = 31 * result + (destination != null ? destination.hashCode() : 0);
             result = 31 * result + (connectOptions != null ? connectOptions.hashCode() : 0);
             result = 31 * result + (callbackHandler != null ? callbackHandler.hashCode() : 0);
+            result = 31 * result + (ejbClientHandler != null ? ejbClientHandler.hashCode() : 0);
             return result;
         }
     }
