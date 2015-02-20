@@ -24,17 +24,21 @@ package org.jboss.naming.remote.client.ejb;
 
 import org.jboss.ejb.client.ContextSelector;
 import org.jboss.ejb.client.EJBClient;
+import org.jboss.ejb.client.EJBClientConfiguration;
 import org.jboss.ejb.client.EJBClientContext;
 import org.jboss.ejb.client.EJBClientContextIdentifier;
 import org.jboss.ejb.client.EJBLocator;
 import org.jboss.ejb.client.IdentityEJBClientContextSelector;
 import org.jboss.ejb.client.NamedEJBClientContextIdentifier;
+import org.jboss.ejb.client.PropertiesBasedEJBClientConfiguration;
 import org.jboss.logging.Logger;
 import org.jboss.naming.remote.client.RemoteContext;
 import org.jboss.remoting3.Connection;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -55,8 +59,9 @@ public class RemoteNamingStoreEJBClientHandler implements EJBClientHandler {
     // This method is referenced via reflection in the org.jboss.naming.remote.client.InitialContextFactory
     // to avoid any hard dependencies between the core remote naming APIs and the EJB client APIs. That way,
     // remote naming is still functional even in the absence of EJB client API jars.
-    public static RemoteNamingStoreEJBClientHandler setupEJBClientContext(final List<RemoteContext.CloseTask> closeTasks) {
-        final EJBClientContext ejbClientContext = EJBClientContext.create();
+    public static RemoteNamingStoreEJBClientHandler setupEJBClientContext(final Properties ejbClientProperties, final List<RemoteContext.CloseTask> closeTasks) {
+        EJBClientConfiguration clientConfiguration = new PropertiesBasedEJBClientConfiguration(ejbClientProperties);
+        final EJBClientContext ejbClientContext = EJBClientContext.create(clientConfiguration);
         final String ejbClientContextName = EJB_CLIENT_CONTEXT_NAME_PREFIX + nextEJBClientContextNumber.addAndGet(1);
         final EJBClientContextIdentifier ejbClientContextIdentifier = new NamedEJBClientContextIdentifier(ejbClientContextName);
         // register the context with the selector
