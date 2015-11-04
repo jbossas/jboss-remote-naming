@@ -50,29 +50,38 @@ public class EndpointCache {
         return cacheEntry.endpointWrapper;
     }
 
-    public synchronized void release(final CacheKey endpointHash, final boolean async) {
-        final CacheEntry cacheEntry = cache.get(endpointHash);
-        if (cacheEntry.referenceCount.decrementAndGet() == 0) {
-            try {
-                if (async) {
-                    cacheEntry.endpoint.closeAsync();
-                } else {
-                    try {
-                        cacheEntry.endpoint.close();
-                    } catch (IOException e) {
-                        throw new RuntimeException("Failed to close endpoint", e);
-                    }
+    public void release(final CacheKey endpointHash, final boolean async) {
+        Endpoint toClose;
+        synchronized (this) {
+            final CacheEntry cacheEntry = cache.get(endpointHash);
+            if (cacheEntry.referenceCount.decrementAndGet() == 0) {
+                try {
+                    toClose = cacheEntry.endpoint;
+                } finally {
+                    cache.remove(endpointHash);
                 }
-
-            } finally {
-                cache.remove(endpointHash);
+            } else {
+                return;
+            }
+        }
+        if (async) {
+            toClose.closeAsync();
+        } else {
+            try {
+                toClose.close();
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to close endpoint", e);
             }
         }
     }
 
-    public synchronized void shutdown() {
-        for(Map.Entry<CacheKey, CacheEntry> entry : cache.entrySet()) {
-            safeClose(entry.getValue().endpoint);
+    public void shutdown() {
+        final CacheEntry[] cacheEntries;
+        synchronized (this) {
+            cacheEntries = cache.values().toArray(new CacheEntry[cache.size()]);
+        }
+        for (CacheEntry entry : cacheEntries) {
+            safeClose(entry.endpoint);
         }
     }
 
