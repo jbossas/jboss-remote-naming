@@ -93,8 +93,6 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
     private static final OptionMap DEFAULT_CONNECTION_CREATION_OPTIONS = OptionMap.create(Options.SASL_POLICY_NOANONYMOUS, false);
     private static final OptionMap DEFAULT_CONNECTION_PROVIDER_CREATION_OPTIONS = OptionMap.create(Options.SSL_ENABLED, false);
 
-    private static volatile Object remoteContextSelector = null;
-
     private static final NamingStoreCache NAMING_STORE_CACHE = new NamingStoreCache();
     private static final EndpointCache ENDPOINT_CACHE = new EndpointCache();
 
@@ -112,11 +110,11 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         CACHE_SHUTDOWN.registerShutdownHandler();
 
         final ClassLoader classLoader = InitialContextFactory.class.getClassLoader();
-        Class klass = null;
+        Class<?> klass = null;
         Method method = null;
         try {
             klass = classLoader.loadClass(REMOTE_NAMING_EJB_CLIENT_HANDLER_CLASS_NAME);
-            method = klass.getMethod("setupEJBClientContext", new Class<?>[] {List.class});
+            method = klass.getMethod("setupEJBClientContext", new Class<?>[] {Properties.class, List.class});
         } catch (Throwable t) {
             logger.warn("EJB client integration will not be available due to a problem setting up the EJB client handler", t);
         }
@@ -138,12 +136,13 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             }
             final List<RemoteContext.CloseTask> closeTasks = new ArrayList<RemoteContext.CloseTask>();
             final EJBClientHandler ejbClientHandler;
+            Properties ejbClientProperties = findAndCreateClientProperties(env);
             if (setupEJBClientContext) {
-                ejbClientHandler = this.setupEJBClientContext(closeTasks);
+                ejbClientHandler = this.setupEJBClientContext(ejbClientProperties, closeTasks);
             } else {
                 ejbClientHandler = null;
             }
-            final RemoteNamingStore namingStore = getOrCreateNamingStore((Hashtable<String, Object>) env, findAndCreateClientProperties(env), OptionMap.EMPTY, 5000, closeTasks, ejbClientHandler);
+            final RemoteNamingStore namingStore = getOrCreateNamingStore((Hashtable<String, Object>) env, ejbClientProperties, OptionMap.EMPTY, 5000, closeTasks, ejbClientHandler);
             return new RemoteContext(namingStore, (Hashtable<String, Object>) env, closeTasks);
 
         } catch (NamingException e) {
@@ -440,13 +439,13 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
         }
     }
 
-    private EJBClientHandler setupEJBClientContext(final List<RemoteContext.CloseTask> closeTasks) {
+    private EJBClientHandler setupEJBClientContext(final Properties ejbClientProperties, final List<RemoteContext.CloseTask> closeTasks) {
         if (remoteNamingEJBClientHandlerClass == null || setupEJBClientContextMethod == null) {
             logger.warn("EJB client integration is disabled because the EJB client handler class not available for remote naming");
             return null;
         }
         try {
-            final Object handler = setupEJBClientContextMethod.invoke(null, closeTasks);
+            final Object handler = setupEJBClientContextMethod.invoke(null, ejbClientProperties, closeTasks);
             return (EJBClientHandler) handler;
         } catch (Throwable t) {
             logger.warn("EJB client integration will not be available due to a problem setting up the client context", t);
