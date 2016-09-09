@@ -677,7 +677,7 @@ class Protocol {
 
     static ProtocolCommand<Void> RENAME = new BaseProtocolCommand<Void, ProtocolIoFuture<Void>>((byte) 0x07) {
         public Void execute(final Channel channel, final Object... args) throws IOException, NamingException {
-            if (args.length != 2 || !(args[0] instanceof Name) || !(args[0] instanceof Name)) {
+            if (args.length != 2 || !(args[0] instanceof Name) || !(args[1] instanceof Name)) {
                 throw new IllegalArgumentException("Rename requires two name arguments");
             }
             final Name name = Name.class.cast(args[0]);
