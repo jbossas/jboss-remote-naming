@@ -47,7 +47,9 @@ public class EndpointCache {
             final Endpoint endpoint = Remoting.createEndpoint(endpointName, Xnio.getInstance(), endPointCreationOptions);
             endpoint.addConnectionProvider("remote", new RemoteConnectionProviderFactory(), remoteConnectionProviderOptions);
             endpoint.addConnectionProvider("http-remoting", new HttpUpgradeConnectionProviderFactory(), OptionMap.builder().addAll(remoteConnectionProviderOptions).set(Options.SSL_ENABLED, Boolean.FALSE).getMap());
+            endpoint.addConnectionProvider("remote+http", new HttpUpgradeConnectionProviderFactory(), OptionMap.builder().addAll(remoteConnectionProviderOptions).set(Options.SSL_ENABLED, Boolean.FALSE).getMap());
             endpoint.addConnectionProvider("https-remoting", new HttpUpgradeConnectionProviderFactory(), OptionMap.builder().addAll(remoteConnectionProviderOptions).set(Options.SSL_ENABLED, Boolean.TRUE).getMap());
+            endpoint.addConnectionProvider("remote+https", new HttpUpgradeConnectionProviderFactory(), OptionMap.builder().addAll(remoteConnectionProviderOptions).set(Options.SSL_ENABLED, Boolean.TRUE).getMap());
 
             cacheEntry = new CacheEntry(endpoint, new EndpointWrapper(endpointHash, endpoint));
             cache.putIfAbsent(endpointHash, cacheEntry);
