@@ -36,7 +36,7 @@ public interface ProtocolCommand<T> {
 
     T execute(Channel channel, Object... args) throws IOException, NamingException;
 
-    void handleServerMessage(Channel channel, DataInput input, int correlationId, RemoteNamingService namingServer) throws IOException;
+    void handleServerMessage(Channel channel, DataInput input, int correlationId, RemoteNamingService remoteNamingService) throws IOException;
 
     void handleClientMessage(DataInput input, int correlationId, RemoteNamingStore namingStore) throws IOException;
 }
