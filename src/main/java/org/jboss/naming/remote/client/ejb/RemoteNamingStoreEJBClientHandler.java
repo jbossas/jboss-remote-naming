@@ -37,7 +37,6 @@ import org.jboss.remoting3.Connection;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -68,7 +67,7 @@ public class RemoteNamingStoreEJBClientHandler implements EJBClientHandler {
         registerEJBClientContextWithSelector(ejbClientContextIdentifier, ejbClientContext);
         // add a close task which closes the EJB client context when the remote naming context is closed
         if (closeTasks != null) {
-            closeTasks.add(new RemoteNamingEJBClientContextCloseTask(ejbClientContext));
+            closeTasks.add(new RemoteNamingEJBClientContextCloseTask(ejbClientContextIdentifier, ejbClientContext));
         }
         return new RemoteNamingStoreEJBClientHandler(ejbClientContextIdentifier, ejbClientContext);
     }
@@ -109,11 +108,22 @@ public class RemoteNamingStoreEJBClientHandler implements EJBClientHandler {
         }
     }
 
+    private static void unregisterEJBClientContextFromSelector(final EJBClientContextIdentifier identifier) {
+        final ContextSelector<EJBClientContext> currentSelector = EJBClientContext.getSelector();
+        if (currentSelector instanceof IdentityEJBClientContextSelector) {
+            // unregister the EJB client context from the selector
+            ((IdentityEJBClientContextSelector) currentSelector).unRegisterContext(identifier);
+        }
+    }
+
     private static class RemoteNamingEJBClientContextCloseTask implements RemoteContext.CloseTask {
 
+        private EJBClientContextIdentifier identifier;
         private EJBClientContext ejbClientContext;
 
-        private RemoteNamingEJBClientContextCloseTask(final EJBClientContext clientContext) {
+        private RemoteNamingEJBClientContextCloseTask(final EJBClientContextIdentifier identifier,
+                                                      final EJBClientContext clientContext) {
+            this.identifier = identifier;
             this.ejbClientContext = clientContext;
         }
 
@@ -121,6 +131,7 @@ public class RemoteNamingStoreEJBClientHandler implements EJBClientHandler {
         public void close(boolean isFinalize) {
             try {
                 this.ejbClientContext.close();
+                unregisterEJBClientContextFromSelector(identifier);
             } catch (IOException e) {
                 logger.debug("Failed to close EJB client context " + this.ejbClientContext, e);
             }
